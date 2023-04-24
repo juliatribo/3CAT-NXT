@@ -496,7 +496,10 @@ void RadioInit( RadioEvents_t *events )
 
     SX126xSetBufferBaseAddress( 0x00, 0x00 );
     SX126xSetTxParams( 0, RADIO_RAMP_200_US );
-    SX126xSetDioIrqParams( IRQ_RADIO_ALL, IRQ_RADIO_ALL, IRQ_RADIO_NONE, IRQ_RADIO_NONE );
+
+    //SX126xSetDio2AsRfSwitchCtrl(true);
+    SX126xSetDioIrqParams( IRQ_RADIO_ALL, IRQ_RADIO_ALL,IRQ_RADIO_NONE, IRQ_RADIO_NONE );
+
 
     // Initialize driver timeout timers
     TimerInit( &TxTimeoutTimer, RadioOnTxTimeoutIrq );
@@ -858,7 +861,7 @@ void RadioSend( uint8_t *buffer, uint8_t size )
 {
     SX126xSetDioIrqParams( IRQ_TX_DONE | IRQ_RX_TX_TIMEOUT,
                            IRQ_TX_DONE | IRQ_RX_TX_TIMEOUT,
-                           IRQ_RADIO_NONE,
+						   IRQ_RADIO_NONE ,
                            IRQ_RADIO_NONE );
 
     if( SX126xGetPacketType( ) == PACKET_TYPE_LORA )
@@ -895,7 +898,7 @@ void RadioRx( uint32_t timeout )
 {
     SX126xSetDioIrqParams( IRQ_RADIO_ALL, //IRQ_RX_DONE | IRQ_RX_TX_TIMEOUT,
                            IRQ_RADIO_ALL, //IRQ_RX_DONE | IRQ_RX_TX_TIMEOUT,
-                           IRQ_RADIO_NONE,
+						   IRQ_RADIO_NONE ,
                            IRQ_RADIO_NONE );
 
     if( timeout != 0 )
@@ -918,7 +921,7 @@ void RadioRxBoosted( uint32_t timeout )
 {
     SX126xSetDioIrqParams( IRQ_RADIO_ALL, //IRQ_RX_DONE | IRQ_RX_TX_TIMEOUT,
                            IRQ_RADIO_ALL, //IRQ_RX_DONE | IRQ_RX_TX_TIMEOUT,
-                           IRQ_RADIO_NONE,
+						   IRQ_RADIO_ALL ,
                            IRQ_RADIO_NONE );
 
     if( timeout != 0 )

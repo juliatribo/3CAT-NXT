@@ -47,7 +47,9 @@ States_t State = LOWPOWER;          //Current state of the State Machine
 uint8_t Buffer[BUFFER_SIZE];        //Tx and Rx decoded
 uint16_t BufferSize;				//decoded size
 uint8_t decoded[BUFFER_SIZE];			//decodeded mes
+uint8_t decoded_size;
 uint8_t nack[WINDOW_SIZE];          //To store the last ack/nack received
+uint8_t nack_size;
 uint8_t last_telecommand[BUFFER_SIZE]; //Last telecommand RX
 
 
@@ -64,7 +66,6 @@ uint8_t request_execution = false;  //To send the request execution packet
 uint8_t protocol_timeout = false;   //True when the protocol timer ends
 uint8_t reception_ack_mode = false; //True
 uint8_t contingency = false;        //True if we are in contingency state (only RX allowed)
-uint8_t ask_data = false;			//True if GS asks to ask another sat the data
 uint8_t isGS = true;				//True if telecommand is sent by GS, false if telecommand is sent by another sat
 
 
@@ -76,7 +77,7 @@ uint8_t packet_number = 0;          //Data packet number
 uint8_t num_config = 0;             //Configuration packet number
 uint8_t num_telemetry = 0;          //Telemetry packet number
 uint8_t window_packet = 0;          //TX window number
-uint8_t nack_counter;               //Position of the NACK array (packets already retransmitted)
+uint8_t nack_counter = 0;               //Position of the NACK array (packets already retransmitted)
 uint8_t count=0;                        //Counter for loops
 uint8_t protocol_timeout_counter = 0; //Number of times that the protocol timer (500 ms) has ended
                                       //This is used to have longer timers for higher SF
@@ -243,6 +244,13 @@ void COMMS_StateMachine( void )
     	//DelayMs(1);
 
     	Radio.IrqProcess();       //Checks the interruptions
+
+        if (State == TX) {
+        	GpioWrite( &SX126x.DIO2, GPIO_PIN_SET);
+        } else {
+        	GpioWrite( &SX126x.DIO2, GPIO_PIN_RESET);
+        }
+
         switch(State)
         {
             case RX_TIMEOUT:
@@ -273,115 +281,116 @@ void COMMS_StateMachine( void )
             {
                 if(PacketReceived == true)
                 {
+                	if(Buffer[0]==0xE1){
 
-					int index = ceil(BufferSize/RATE_CON);
-					uint8_t conv_decoded[index];
+						int index = ceil(BufferSize/RATE_CON);
+						uint8_t conv_decoded[index];
 
-					ssize_t decoded_conv_size = correct_convolutional_decode(conv, Buffer, BufferSize*8, conv_decoded);
+						ssize_t decoded_conv_size = correct_convolutional_decode(conv, Buffer, BufferSize*8, conv_decoded);
 
-					//DEINTERLEAVE
-					unsigned char codeword_deinterleaved[127]; //127 is the maximum value it can get taking into account the tinygs maximum length is 255 and that the convolutional code adds redundant bytes
-					index = deinterleave(conv_decoded, decoded_conv_size, codeword_deinterleaved);
+						//DEINTERLEAVE
+						unsigned char codeword_deinterleaved[127]; //127 is the maximum value it can get taking into account the tinygs maximum length is 255 and that the convolutional code adds redundant bytes
+						index = deinterleave(conv_decoded, decoded_conv_size, codeword_deinterleaved);
+						decoded_size = index-4;
+						//DECODE REED SOLOMON
 
-					//DECODE REED SOLOMON
+						int erasures[16];
+						int nerasures = 0;
+						decode_data(codeword_deinterleaved, decoded_size);
 
-					int erasures[16];
-					int nerasures = 0;
-					decode_data(codeword_deinterleaved, index-4);
-
-					int syndrome = check_syndrome();
-					/* check if syndrome is all zeros */
-					if (syndrome == 0) {
-						// no errs detected, codeword payload should match message
-					} else {
-						//nonzero syndrome, attempting correcting errors
-						int result = 0;//result 0 not able to correct, result 1 corrected
-						result =correct_errors_erasures (codeword_deinterleaved,
-														index,
-														nerasures,
-														erasures);
-					}
-
-					memcpy(decoded, codeword_deinterleaved,index-4);
-
-					memset(conv_decoded, 0, sizeof(conv_decoded));
-					if (pin_correct(decoded[0], decoded[1]))
-					{
-						State = LOWPOWER;
-						if (decoded[2] == TLE){
-							Stop_timer_16();	//This is not necessary, put here for safety
-							if (!tle_telecommand){	//First TLE packet
-								tle_telecommand = true;
-								State = RX;
-								telecommand_rx = true;
-							}
-							else{	//Is the last TLE packet (there are 2)
-								tle_telecommand = false;
-								State = LOWPOWER;	//Line unnecessary
-								telecommand_rx = false;
-							}
-							process_telecommand(decoded[2], decoded[3]);	//Saves the TLE
+						int syndrome = check_syndrome();
+						/* check if syndrome is all zeros */
+						if (syndrome == 0) {
+							// no errs detected, codeword payload should match message
+						} else {
+							//nonzero syndrome, attempting correcting errors
+							int result = 0;//result 0 not able to correct, result 1 corrected
+							result =correct_errors_erasures (codeword_deinterleaved,
+															index,
+															nerasures,
+															erasures);
 						}
-						else if (telecommand_rx){//Second telecommand RX consecutively
 
-							//rx_attemps_counter = 0;
+						memcpy(decoded, codeword_deinterleaved,decoded_size);
 
-							if (decoded[2] == last_telecommand[2]){	//Second telecommand received equal to the first CHANGE THIS TO CHECK THE WHOLE TELECOMMAND. USE VARIABLE compare_arrays
-								//decoded[2] == (SEND_DATA || SEND_TELEMETRY || ACK_DATA || SEND_CALIBRATION || SEND_CONFIG);
-								Stop_timer_16();
-								if ((decoded[2] == RESET2) || (decoded[2] == NOMINAL) || (decoded[2] == LOW) || (decoded[2] == CRITICAL) || (decoded[2] == EXIT_LOW_POWER) || (decoded[2] == EXIT_CONTINGENCY) || (decoded[2] == EXIT_SUNSAFE) || (decoded[2] == SET_TIME) || decoded[2] == SEND_DATA || decoded[2] == SEND_TELEMETRY || decoded[2] == ACK_DATA || decoded[2] == SEND_CALIBRATION || decoded[2] == SEND_CONFIG || decoded[2] == ASK_DATA|| decoded[2] == TAKE_RF){
+						if (pin_correct(decoded[0], decoded[1]))
+						{
+							State = LOWPOWER;
+							if (decoded[2] == TLE){
+								Stop_timer_16();	//This is not necessary, put here for safety
+								if (!tle_telecommand){	//First TLE packet
+									tle_telecommand = true;
+									State = RX;
+									telecommand_rx = true;
+								}
+								else{	//Is the last TLE packet (there are 2)
+									tle_telecommand = false;
+									State = LOWPOWER;	//Line unnecessary
 									telecommand_rx = false;
-									process_telecommand(decoded[2], decoded[3]);
 								}
-								else {
-									request_execution = true;
-									State = TX;
-									//vTaskDelay(300);
-									//manualDelayMS(300);
-								}
+								process_telecommand(decoded[2], decoded[3]);	//Saves the TLE
 							}
+							else if (telecommand_rx){//Second telecommand RX consecutively
 
-							else if(decoded[2] == ACK){	//Order execution ACK
 								//rx_attemps_counter = 0;
-								Stop_timer_16();
-								request_counter = 0;
-								request_execution = false;
-								reception_ack_mode = false;
-								telecommand_rx = false;
-								process_telecommand(last_telecommand[2], last_telecommand[3]);
+
+								if (decoded[2] == last_telecommand[2]){	//Second telecommand received equal to the first CHANGE THIS TO CHECK THE WHOLE TELECOMMAND. USE VARIABLE compare_arrays
+									//decoded[2] == (SEND_DATA || SEND_TELEMETRY || ACK_DATA || SEND_CALIBRATION || SEND_CONFIG);
+									Stop_timer_16();
+									if ((decoded[2] == RESET2) || (decoded[2] == NOMINAL) || (decoded[2] == LOW) || (decoded[2] == CRITICAL) || (decoded[2] == EXIT_LOW_POWER) || (decoded[2] == EXIT_CONTINGENCY) || (decoded[2] == EXIT_SUNSAFE) || (decoded[2] == SET_TIME) || decoded[2] == SEND_DATA || decoded[2] == SEND_TELEMETRY || decoded[2] == ACK_DATA || decoded[2] == SEND_CALIBRATION || decoded[2] == SEND_CONFIG|| decoded[2] == TAKE_RF || (decoded[2] == NACK_TELEMETRY) || (decoded[2] == NACK_CONFIG) ){
+										telecommand_rx = false;
+										process_telecommand(decoded[2], decoded[3]);
+									}
+									else {
+										request_execution = true;
+										State = TX;
+										//vTaskDelay(300);
+										//manualDelayMS(300);
+									}
+								}
+
+								else if(decoded[2] == ACK){	//Order execution ACK
+									//rx_attemps_counter = 0;
+									Stop_timer_16();
+									request_counter = 0;
+									request_execution = false;
+									reception_ack_mode = false;
+									telecommand_rx = false;
+									process_telecommand(last_telecommand[2], last_telecommand[3]);
+									State = RX;
+								}
+								else{	//Second telecommand received different from the first
+									State = TX;
+									telecommand_rx = false;
+									error_telecommand = true;
+									Stop_timer_16();
+									//vTaskDelay(10);
+									//manualDelayMS(10);
+								}
+							}
+							else{	//First telecommand RX
+								memcpy(last_telecommand, decoded, BUFFER_SIZE);
+								last_telecommand[0] = MISSION_ID;	//To avoid retransmitting the PIN
+								last_telecommand[1] = POCKETQUBE_ID;
+								tle_telecommand = false;
+								telecommand_rx = true;
 								State = RX;
-							}
-							else{	//Second telecommand received different from the first
-							    State = TX;
-							    telecommand_rx = false;
-							    error_telecommand = true;
-							    Stop_timer_16();
-							    //vTaskDelay(10);
-							    //manualDelayMS(10);
+								//rx_attemps_counter = 0;
+								//manualDelayMS(10);
+								//vTaskDelay(10);
+								Start_timer_16();
 							}
 						}
-						else{	//First telecommand RX
-							memcpy(last_telecommand, decoded, BUFFER_SIZE);
-							last_telecommand[0] = MISSION_ID;	//To avoid retransmitting the PIN
-							last_telecommand[1] = POCKETQUBE_ID;
-							tle_telecommand = false;
-							telecommand_rx = true;
-							State = RX;
-							//rx_attemps_counter = 0;
-							//manualDelayMS(10);
-							//vTaskDelay(10);
-							Start_timer_16();
+						else{	//Pin not correct. If pin not correct it is assumed that the packet comes from another source. The protocol continues ignoring it
+							State = TX;
+							error_telecommand = true;
+							Stop_timer_16();
+							//xEventGroupSetBits(xEventGroup, uxBitsToSet)
+							//vTaskDelay(500);
+							//manualDelayMS(500);
 						}
-					}
-					else{	//Pin not correct. If pin not correct it is assumed that the packet comes from another source. The protocol continues ignoring it
-					    State = TX;
-					    error_telecommand = true;
-					    Stop_timer_16();
-					    //xEventGroupSetBits(xEventGroup, uxBitsToSet)
-					    //vTaskDelay(500);
-					    //manualDelayMS(500);
-					}
-                    PacketReceived = false;     // Reset flag
+ 						PacketReceived = false;     // Reset flag
+                	}
                 }
                 else	//If packet not received, restart reception process
                 {
@@ -436,43 +445,49 @@ void COMMS_StateMachine( void )
             		uint8_t transformed[96];
             		if (window_packet < WINDOW_SIZE){
             			if (nack_flag){
-            				if (nack[nack_counter] != 0){
-            					Read_Flash(DATA_ADDR + nack[nack_counter]*96, &read_photo, sizeof(read_photo));
+            				if (nack_counter < nack_size){
+            					Read_Flash(PHOTO_ADDR + nack[nack_counter]*96, &read_photo, sizeof(read_photo));
                     			decoded[2] = nack[nack_counter];	//Number of the retransmitted packet
                     			nack_counter++;
+
             				} else{ //When all packets have been retransmitted, we continue with the next one
             					nack_flag = false;
-            					nack_counter = 0;
-                				Read_Flash(DATA_ADDR + packet_number*96, &read_photo, sizeof(read_photo));
+            					nack_counter = 0;;
+            					/*
+                				Read_Flash(PHOTO_ADDR + packet_number*96, &read_photo, sizeof(read_photo));
                     			decoded[2] = packet_number;	//Number of the packet
-                    			packet_number++;
+                    			*/
+                    			packet_number = 0;
+                    			window_packet = WINDOW_SIZE;
             				}
             			} else {
-            				Read_Flash(DATA_ADDR + packet_number*96, &read_photo, sizeof(read_photo));
+            				Read_Flash(PHOTO_ADDR + packet_number*96, &read_photo, sizeof(read_photo));
                 			decoded[2] = packet_number;	//Number of the packet
                 			packet_number++;
+
             			}
             			decoded[0] = MISSION_ID;	//Satellite ID
-            			decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
-            			memcpy(&transformed, read_photo, sizeof(transformed));
-            			for (uint8_t i=3; i<BUFFER_SIZE-1; i++){
-            				decoded[i] = transformed[i-3];
-            			}
-            			decoded[BUFFER_SIZE-1] = 0xFF;	//Final of the packet indicator
-            			window_packet++;
-            			State = TX;
+						decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
+						memcpy(&transformed, read_photo, sizeof(transformed));
+						for (uint8_t i=3; i<BUFFER_SIZE-1; i++){
+							decoded[i] = transformed[i-3];
+						}
+						decoded[BUFFER_SIZE-1] = 0xFF;	//Final of the packet indicator
+						window_packet++;
+						State = TX;
 
 						//Delay( 3 );
-						uint8_t conv_encoded[256];
-						int encoded_len_bytes = encode (decoded, conv_encoded, DATA_PACKET_SIZE+1);
+						//uint8_t conv_encoded[256];
+						//int encoded_len_bytes = encode (decoded, conv_encoded, DATA_PACKET_SIZE+1);
 						//print_word(encoded_len_bytes, conv_encoded);
 
-						Radio.Send( conv_encoded, encoded_len_bytes );
+						Radio.Send( decoded, BUFFER_SIZE );
 						vTaskDelay(pdMS_TO_TICKS(3000));
-						Radio.Send( conv_encoded, encoded_len_bytes );
+						Radio.Send( decoded, BUFFER_SIZE );
 
             		} else{
             			tx_flag = false;
+            			packet_number = 0;
             			send_data = false;
             			window_packet = 0;
             			State = RX;
@@ -914,11 +929,13 @@ void process_telecommand(uint8_t header, uint8_t info) {
 		}
 		break;
 	}
-	case SEND_TELEMETRY:{
+	case SEND_TELEMETRY:
+	case NACK_TELEMETRY:{
 		uint64_t read_telemetry[5];
 		uint8_t transformed[TELEMETRY_PACKET_SIZE];	//Maybe is better to use 40 bytes, as multiple of 8
 		if (!contingency){
 			Read_Flash(PHOTO_ADDR, &read_telemetry, sizeof(read_telemetry)); // change to TELEMETRY_ADDR
+			Send_to_WFQueue(&read_telemetry, sizeof(read_telemetry), PHOTO_ADDR, COMMSsender);
 			decoded[0] = MISSION_ID;	//Satellite ID
 			decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
 			decoded[2] = num_telemetry;	//Number of the packet
@@ -928,22 +945,15 @@ void process_telecommand(uint8_t header, uint8_t info) {
 			}
 			decoded[TELEMETRY_PACKET_SIZE+2] = 0xFF;	//Final of the packet indicator
 			num_telemetry++;
-			//vTaskDelay(pdMS_TO_TICKS(300));
 
 			uint8_t conv_encoded[256];
 			int encoded_len_bytes = encode (decoded, conv_encoded, TELEMETRY_PACKET_SIZE+3);
+			vTaskDelay(pdMS_TO_TICKS(3000));
 
 			Radio.Send(conv_encoded,encoded_len_bytes);
 			vTaskDelay(pdMS_TO_TICKS(3000));
 			Radio.Send(conv_encoded,encoded_len_bytes);
 			State = RX;
-		}
-		break;
-	}
-	case ASK_DATA:{
-		if (!contingency){
-			State = TX;
-			ask_data = true; 	// activate ask others flag
 		}
 		break;
 	}
@@ -956,10 +966,24 @@ void process_telecommand(uint8_t header, uint8_t info) {
 	case ACK_DATA:{
 		if (!contingency && info != 0){
 			nack_flag = true;
-			memcpy(&nack, decoded[3], sizeof(nack));
-			tx_flag = true;	//Activates TX flag
-			State = TX;
-			send_data = true;
+			int j = 0;
+			for(int i = 3; i<decoded_size; i++){
+				if(decoded[i]==0x0){
+					nack[j] = i-3;
+					j++;
+				}
+			}
+			nack_size = j;
+			if (nack_size !=0){
+				tx_flag = true;	//Activates TX flag
+				State = TX;
+				send_data = true;
+			}
+			else{
+				tx_flag = false;	//Activates RX flag
+				State = RX;
+				send_data = false;
+			}
 		}
 		break;
 	}
@@ -1034,11 +1058,13 @@ void process_telecommand(uint8_t header, uint8_t info) {
 		xTaskNotify(OBC_Handle, TAKERF_NOTI, eSetBits); //Notification to OBC
 		break;
 	}
-	case SEND_CONFIG:{
+	case SEND_CONFIG:
+	case NACK_CONFIG:{
 		uint64_t read_config[4];
 		uint8_t transformed[CONFIG_PACKET_SIZE];	//Maybe is better to use 40 bytes, as multiple of 8
 		if (!contingency){
 			Read_Flash(PHOTO_ADDR, &read_config, sizeof(read_config)); // CHANGE TO CONFIG_ADDR
+			Send_to_WFQueue(&read_config, sizeof(read_config), PHOTO_ADDR, COMMSsender);
 			decoded[0] = MISSION_ID;	//Satellite ID
 			decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
 			decoded[2] = num_config;	//Number of the packet
@@ -1054,7 +1080,7 @@ void process_telecommand(uint8_t header, uint8_t info) {
 			uint8_t conv_encoded[256];
 			int encoded_len_bytes = encode (decoded, conv_encoded, CONFIG_PACKET_SIZE+1);
 
-			//DelayMs( 300 );
+			vTaskDelay(pdMS_TO_TICKS(3000));
 			Radio.Send(conv_encoded,encoded_len_bytes);
 			vTaskDelay(pdMS_TO_TICKS(3000));
 			Radio.Send(conv_encoded,encoded_len_bytes);

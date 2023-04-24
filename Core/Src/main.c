@@ -985,6 +985,7 @@ void COMMS_Task(void const * argument)
 	//Send_to_WFQueue(&config_vect,sizeof(config_vect),PHOTO_ADDR,COMMSsender);
 	Send_to_WFQueue(&telemetry_vect,sizeof(telemetry_vect),PHOTO_ADDR,COMMSsender);
 
+
 	for(;;)
 	{
 		COMMS_StateMachine();
