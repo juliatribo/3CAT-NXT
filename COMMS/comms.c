@@ -245,12 +245,6 @@ void COMMS_StateMachine( void )
 
     	Radio.IrqProcess();       //Checks the interruptions
 
-        if (State == TX) {
-        	GpioWrite( &SX126x.DIO2, GPIO_PIN_SET);
-        } else {
-        	GpioWrite( &SX126x.DIO2, GPIO_PIN_RESET);
-        }
-
         switch(State)
         {
             case RX_TIMEOUT:
