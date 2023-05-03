@@ -35,6 +35,7 @@
 #define EXIT_LOW_ADDR 				0x08030007
 #define SET_TIME_ADDR				0x08030008 	//4 bytes (GS -> RTC)
 #define RTC_TIME_ADDR				0x0803000C	//4 bytes (RTC -> Unix) Get from the RTC
+
 //CONFIGURATION ADDRESSES
 #define CONFIG_ADDR 				0x08030010
 #define KP_ADDR 					0x08030010
@@ -59,14 +60,19 @@
 #define PHOTODIODES_OFFSET_ADDR 	0x080300F3 // 12 bytes
 
 //TELEMETRY ADDRESSES
-#define TELEMETRY_ADDR				0x08030100
-#define TEMP_ADDR 					0x08030100
-#define VOLTAGE_ADDR 				0x08030108
-#define CURRENT_ADDR 				0x08030109
-#define BATT_LEVEL_ADDR 			0x0803010A
+#define TELEMETRY_ADDR				0x08030100 // 34 bytes in total
+#define TEMPLAT_ADDR 				0x08030100		// 6
+#define BATT_TEMP_ADDR 			    0x08030106		// 1
+#define MCU_TEMP_ADDR 			    0x08030107		// 1
+#define BATT_CAP_ADDR 			    0x08030108		// 3
+//      CURRENT_STATE_ADDR                             1
+#define GYRO_ADDR 			        0x08030109		// 6
+#define MAGNETOMETER_ADDR 			0x0803010F      // 8
+#define PHOTODIODES_ADDR 			0x08030117      // 8
+
 
 //TIME ADDR
-#define PL_TIME_ADDR 				0x08030110 	//4 bytes (GS -> PAYLOAD CAMERA)
+#define PL_TIME_ADDR 				0x08030111 	//4 bytes (GS -> PAYLOAD CAMERA)
 #define PL_RF_TIME_ADDR				0x0803011C	//8 bytes (GS -> PAYLOAD RF)
 
 //COMMS CONFIGURATION ADDRESSES
@@ -77,15 +83,15 @@
 
 #define TIMEOUT_ADDR 				0x08030204 // 2 bytes
 
-/*FROM COMMS REPO...****************************
- * we should check if it interfieres with other addrs...
- * most probably is the case :))
- * */
+#define ANTENNA_DEPLOYED_ADDR       0x08030205
+
+
+/**********OTHER ADDR****************************/
 #define DATA_ADDR					0x08030000
 #define TLE_ADDR1 					0x08038020 // 138 bytes
 #define TLE_ADDR2 					0x08038065 // 138 bytes
 #define COMMS_TIME_ADDR				0x0803E860 // Time between packets
-#define TIME_ADDR					0x08038008 	//4 bytes (GS -> RTC)
+#define PHOTOTIME_ADDR					0x08038008 	//4 bytes (GS -> RTC)
 /************************************************/
 
 extern EventGroupHandle_t xEventGroup;

@@ -260,13 +260,15 @@ uint8_t config_vect[]={0x0A, 0x0A, 0x0A, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x4
 uint8_t telemetry_vect[]={0x01, 0x01, 0x01, 0x02, 0x02, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
 			0x00, 0x01, 0x00, 0x00, 0xFF, 0xE2, 0x02, 0x28, 0x49, 0x43, 0x43, 0x5F, 0x50, 0x52};
 
-
 TaskHandle_t FLASH_Handle;
+TaskHandle_t OBC_Handle;
+TaskHandle_t COMMS_Handle;
 TaskHandle_t EPS_Handle;
 TaskHandle_t PAYLOAD_Handle;
 TaskHandle_t ADCS_Handle;
-TaskHandle_t COMMS_Handle;
-TaskHandle_t OBC_Handle;
+TaskHandle_t sTIM_Handle;
+
+TaskHandle_t Test_Handle;
 
 QueueHandle_t FLASH_Queue;
 
@@ -300,6 +302,10 @@ void ADCS_Task(void const * argument);
 void PAYLOAD_Task(void const * argument);
 void FLASH_Task(void const * argument);
 void EPS_Task(void const * argument);
+void sTIM_Task(void const * argument);
+
+void Test_Task(void const * argument);
+
 
 
 /* USER CODE END PFP */
@@ -347,12 +353,16 @@ int main(void)
   MX_TIM7_Init();
   MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
+
   xTaskCreate( FLASH_Task,     "FLASH",   FLASH_STACK_SIZE, NULL,   FLASH_PRIORITY, &FLASH_Handle  );
   //xTaskCreate( EPS_Task,         "EPS",     EPS_STACK_SIZE, NULL,   EPS_PRIORITY, &EPS_Handle  );
   //xTaskCreate( PAYLOAD_Task, "PAYLOAD", PAYLOAD_STACK_SIZE, NULL, PAYLOAD_PRIORITY, &PAYLOAD_Handle);
   //xTaskCreate( ADCS_Task,       "ADCS",    ADCS_STACK_SIZE, NULL,    ADCS_PRIORITY, &ADCS_Handle   );
-  xTaskCreate( OBC_Task,         "OBC",     OBC_STACK_SIZE, NULL,     1, &OBC_Handle    );
-  xTaskCreate( COMMS_Task,     "COMMS",   COMMS_STACK_SIZE, NULL,   1, &COMMS_Handle  );
+  //xTaskCreate( OBC_Task,         "OBC",     OBC_STACK_SIZE, NULL,     OBC_PRIORITY, &OBC_Handle    );
+  //xTaskCreate( COMMS_Task,     "COMMS",   COMMS_STACK_SIZE, NULL,   COMMS_PRIORITY, &COMMS_Handle  );
+  //xTaskCreate( sTIM_Task,     "sTIM",   sTIM_STACK_SIZE, NULL,   sTIM_PRIORITY, &sTIM_Handle  );
+
+  xTaskCreate( Test_Task,     "Test",   1000, NULL,   1, &Test_Handle  );
 
   FLASH_Queue = xQueueCreate(10,sizeof(QueueData_t)); // QUEUE : FIFO buffer for controlling the writing on the memory flash
 
@@ -942,13 +952,9 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void OBC_Task(void const * argument)
 {
-	uint8_t currentState,previousState;
-	currentState = _NOMINAL;
-	previousState = _INIT;
-	Send_to_WFQueue(&currentState, 1, CURRENT_STATE_ADDR, OBCsender);
-	Send_to_WFQueue(&previousState, 1, PREVIOUS_STATE_ADDR, OBCsender);
+	uint8_t currentState;
 
-	//OBC_Init();
+	OBC_Init();
 
 	 for(;;)
 	 {
@@ -981,9 +987,9 @@ void OBC_Task(void const * argument)
 
 void COMMS_Task(void const * argument)
 {
-	//Send_to_WFQueue(&photo_vect2,sizeof(photo_vect2),PHOTO_ADDR,COMMSsender);
-	//Send_to_WFQueue(&config_vect,sizeof(config_vect),PHOTO_ADDR,COMMSsender);
-	Send_to_WFQueue(&telemetry_vect,sizeof(telemetry_vect),PHOTO_ADDR,COMMSsender);
+	Send_to_WFQueue(&photo_vect,sizeof(photo_vect),PHOTO_ADDR,COMMSsender);
+	Send_to_WFQueue(&config_vect,sizeof(config_vect),CONFIG_ADDR,COMMSsender);
+	Send_to_WFQueue(&telemetry_vect,sizeof(telemetry_vect),TELEMETRY_ADDR,COMMSsender);
 
 	for(;;)
 	{
@@ -998,42 +1004,109 @@ void ADCS_Task(void const * argument)
 	for(;;)
 	{
 
-		if (xTaskNotifyWait(0, 0xFFFFFFFF, &RX_ADCS_NOTIS, portMAX_DELAY)==pdPASS) // it clears all flags on exit
+		if (xTaskNotifyWait(0, 0xFFFFFFFF, &RX_ADCS_NOTIS, portMAX_DELAY) == pdPASS)
 			{
-				if((RX_ADCS_NOTIS & WAKEUP_NOTI)==WAKEUP_NOTI)
+				xTimerStart(xTimerAdcs,0);
+
+				if((RX_ADCS_NOTIS & ADCS_TELEMETRY_NOTI) == ADCS_TELEMETRY_NOTI)
 				{
-					// DO SOMETHING AFTER WAKEUP
+					// Poll the Lateral Temperature Sensors
+					// Store Lateral Temperature Sensors data on memory flash at TEMPLAT_ADDR
+
+					// Poll the Gyroscope
+					// Store Gyroscope data on memory flash at GYRO_ADDR
+
+					// Poll the Photodiodes
+					// Store Photodiodes data on memory flash at PHOTODIODES_ADDR
+
+					// Poll the Magnetometers
+					// Store Magnetometers data on memory flash at MAGNETOMETERS_ADDR
+
 				}
-				if((RX_ADCS_NOTIS & SUNSAFE_NOTI)==SUNSAFE_NOTI)
+
+				if((RX_ADCS_NOTIS & DETUMBLING_NOTI) == DETUMBLING_NOTI)
 				{
-					// DO SOMETHING BEFORE TASK GETS SUSPENDED
+					// Check Gyroscope--> Rotating?
+							// If Rotating --> Bdot algotithm for Detumbling
 				}
+
+				if((RX_ADCS_NOTIS & CHECKROTATE_NOTI) == CHECKROTATE_NOTI) // Change CHECK_ROTATE_NOTI
+				{
+					// Compute temperature gradient between PQ faces
+							// If Excessive Temperature Gradient --> ROTATE
+				}
+
+				if((RX_ADCS_NOTIS & POINTING_NOTI) == POINTING_NOTI)
+				{
+					// Nadir Pointing Algorithm
+					xEventGroupSetBits(xEventGroup, PAYLOAD_POINTINGDONE_EVENT);
+				}
+
+				if((RX_ADCS_NOTIS & STOP_POINTING_NOTI) == STOP_POINTING_NOTI)
+				{
+					// Stop Nadir Pointing Algorithm
+				}
+
+				if((RX_ADCS_NOTIS & SUNSAFE_NOTI) == SUNSAFE_NOTI)
+				{
+					// Rotate directly
+				}
+
+				xTimerStop(xTimerAdcs,0);
 			}
 	}
 }
 
 void PAYLOAD_Task(void const * argument)
 {
-	uint32_t RX_PAYLOAD_NOTIS;
+	uint32_t RX_PAYLOAD_NOTIS, phototime, time, dT;
+	EventBits_t EventBits;
 
 	for(;;)
 	{
-		if (xTaskNotifyWait(0, 0xFFFFFFFF, &RX_PAYLOAD_NOTIS, portMAX_DELAY)==pdPASS) // it clears all flags on exit
-			{
-				if((RX_PAYLOAD_NOTIS & WAKEUP_NOTI)==WAKEUP_NOTI)
-				{
-					// DO SOMETHING AFTER WAKEUP
-				}
 
-				if((RX_PAYLOAD_NOTIS & SUNSAFE_NOTI)==SUNSAFE_NOTI)
+		if (xTaskNotifyWait(0, 0xFFFFFFFF, &RX_PAYLOAD_NOTIS, portMAX_DELAY) == pdPASS)
+			{
+
+				if((RX_PAYLOAD_NOTIS & TAKE_PHOTO)==TAKE_PHOTO)
 				{
-					// DO SOMETHING BEFORE TASK GETS SUSPENDED
+					xTimerStart(xTimerPayload,0);
+					// Set Camara Resolution
+					// Set Camara Compressibility
+
+					PAYLOAD_RTC_SetTime(&hrtc); // Synchronize PQ time with GS time
+
+					Read_Flash(PHOTOTIME_ADDR, &phototime, 4);
+
+					PAYLOAD_RTC_GetTime(&hrtc); // Get current time
+
+					Read_Flash(RTC_TIME_ADDR, &time, 4);
+
+					dT = phototime - time; // Period until photo time
+
+					xTimerChangePeriod(xTimerPhoto,pdMS_TO_TICKS(dT*1000),0);
+					xTimerStart(xTimerPhoto,0);
+
+					xTimerStop(xTimerPayload,0);
+
+					EventBits = xEventGroupWaitBits(xEventGroup, PAYLOAD_TIMEFORPHOTO_EVENT | PAYLOAD_POINTINGDONE_EVENT, 0, true, portMAX_DELAY);
+
+					xTimerStart(xTimerPayload,0);
+
+					if( ((EventBits & PAYLOAD_TIMEFORPHOTO_EVENT) == PAYLOAD_TIMEFORPHOTO_EVENT) && ((EventBits & PAYLOAD_POINTINGDONE_EVENT) == PAYLOAD_POINTINGDONE_EVENT) )
+					{
+						// Take Photo
+
+						xEventGroupClearBits(xEventGroup, PAYLOAD_TIMEFORPHOTO_EVENT | PAYLOAD_POINTINGDONE_EVENT);
+					}
+
+					xTimerStop(xTimerPayload,0);
 				}
 			}
 	}
 }
 
-void FLASH_Task(void const * argument)
+void FLASH_Task(void const * argument) // GateKeeper Task of Writing on Flash Memory
 {
 	QueueData_t RxQueueData;
 	BaseType_t xQueueStatus;
@@ -1046,7 +1119,6 @@ void FLASH_Task(void const * argument)
 																		   // This is important as this task will be the one with highest priority.
 																		   // portMAX_DELAY--> specifies that the task will wait indefinitely in blocked state
 
-		//xSemaphoreTake(xMutex,portMAX_DELAY);
 		numMessageWaiting = uxQueueMessagesWaiting(FLASH_Queue);
 
 		for(i=0;i<numMessageWaiting;i++) // Write on Flash all messages from the Queue
@@ -1059,8 +1131,7 @@ void FLASH_Task(void const * argument)
 			}
 		}
 
-		xQueueReset(FLASH_Queue); // Reset a queue back to its original empty state.
-		//xSemaphoreGive(xMutex);
+		xQueueReset(FLASH_Queue); // Reset a queue back to its original empty state (it should be already empty)
 	}
 }
 
@@ -1072,12 +1143,154 @@ void EPS_Task(void const * argument)
 	{
 		if (xTaskNotifyWait(0, 0xFFFFFFFF, &RX_EPS_NOTIS, portMAX_DELAY)==pdPASS)
 		{
-			if((RX_EPS_NOTIS & READ_BATTERY_NOTI)==READ_BATTERY_NOTI)
+			if((RX_EPS_NOTIS & EPS_BATTERY_NOTI) == EPS_BATTERY_NOTI)
 			{
-				// READS THE BATTERY CAPACITY
+				uint8_t state, prev_state, batt, nom, low, crit;
+
+				// Read Battery Capacity
+
+				batt = 95; // arbitrary value by now
+
+				Read_Flash(CURRENT_STATE_ADDR, &state, 1);
+				Read_Flash(PREVIOUS_STATE_ADDR, &prev_state, 1);
+				Read_Flash(NOMINAL_ADDR, &nom, 1);
+				Read_Flash(LOW_ADDR, &low, 1);
+				Read_Flash(CRITICAL_ADDR, &crit, 1);
+
+				Send_to_WFQueue(&state, 1, PREVIOUS_STATE_ADDR, EPSsender); // store the current state as previous
+
+				switch(state)
+				{
+					case _INIT :
+					{
+						if(batt>=nom){state = _NOMINAL;}
+						else{state = _CONTINGENCY;}
+					}
+
+					case _NOMINAL :
+						{
+							if(batt>=nom){state = _NOMINAL;}
+							else{state = _CONTINGENCY;}
+						}
+
+					case _CONTINGENCY :
+						{
+							if(batt>=nom){state = _NOMINAL;}
+							else if(batt<low){state = _SUNSAFE;}
+							else{state = _CONTINGENCY;}
+						}
+					case _SUNSAFE :
+						{
+							if(batt>=low){state = _CONTINGENCY;}
+							else if(batt<crit){state = _SURVIVAL;}
+							else{state = _SUNSAFE;}
+						}
+					case _SURVIVAL :
+						{
+							if(batt>=crit){state = _SUNSAFE;} // Through telecommands (SURVIVAL-->SUNSAFE)
+																		// Hear after sleep
+							else{state = _SURVIVAL;}
+						}
+					default:{state = prev_state;}
+				}
+
+				Send_to_WFQueue(&state, 1, CURRENT_STATE_ADDR, EPSsender);
+			}
+
+			if((RX_EPS_NOTIS & EPS_HEATER_NOTI) == EPS_HEATER_NOTI)
+			{
+				// If we are charging the battery
+					// Read the battery temperature sensor
+						// If (temp<threshold && Heater OFF) --> Heater ON
+						// Else IF (temp>threshold && Heater ON) --> Heater OFF
+			}
+
+			if((RX_EPS_NOTIS & EPS_TELEMETRY_NOTI) == EPS_TELEMETRY_NOTI)
+			{
+				// Read battery temperature sensor
+				// Store battery temperature sensor on memory flash at BATT_TEMP_ADDR
+
+				// Read battery capacity
+				// Store battery capacity on memory flash at BATT_CAP_ADDR
+
 			}
 		}
+	}
+}
 
+void sTIM_Task(void const * argument)
+{
+	uint32_t sTIM_RX_NOTIS;
+
+	uint8_t vCount[5]={0,0,0,0,0}; // {OBC, COMMS, ADCS, PAYLOAD, EPS}
+			// vCount[i]==0 && Timer Inactive --> Unused task
+			// vCount[i]==0 && Timer Active --> Active period
+			// vCount[i]==1 && Timer Active --> Suspended period
+			// vCount[i]==1 && Timer Inactive --> Impossible state XXXX
+
+	uint8_t vHalfwayTask[5]={0,0,0,0,0};
+	TaskHandle_t vTask[5]={OBC_Handle,COMMS_Handle,ADCS_Handle,PAYLOAD_Handle, EPS_Handle};
+	TimerHandle_t vTimer[5]={xTimerObc,xTimerComms,xTimerAdcs,xTimerPayload,xTimerEps};
+	uint32_t vActivePeriod[5]={OBC_ACTIVE_PERIOD, COMMS_ACTIVE_PERIOD, ADCS_ACTIVE_PERIOD, PAYLOAD_ACTIVE_PERIOD, EPS_ACTIVE_PERIOD};
+	uint32_t vSusPeriod[5]={OBC_SUSPENDED_PERIOD, COMMS_SUSPENDED_PERIOD, ADCS_SUSPENDED_PERIOD, PAYLOAD_SUSPENDED_PERIOD, EPS_SUSPENDED_PERIOD};
+
+	uint8_t sender, i;
+
+
+	for(;;)
+	{
+		if(xTaskNotifyWait(0, 0xFFFF, &sTIM_RX_NOTIS, portMAX_DELAY)==pdPASS)
+			{
+				if((sTIM_RX_NOTIS & sTIM_OBC_NOTI) == sTIM_OBC_NOTI){sender = OBC;}
+				if((sTIM_RX_NOTIS & sTIM_COMMS_NOTI) == sTIM_COMMS_NOTI){sender = COMMS;}
+				if((sTIM_RX_NOTIS & sTIM_ADCS_NOTI) == sTIM_ADCS_NOTI){sender = ADCS;}
+				if((sTIM_RX_NOTIS & sTIM_PAYLOAD_NOTI) == sTIM_PAYLOAD_NOTI){sender = PAYLOAD;}
+				if((sTIM_RX_NOTIS & sTIM_EPS_NOTI) == sTIM_EPS_NOTI){sender = EPS;}
+			}
+
+		if(vCount[sender]=0) // Exceeded active period
+		{
+			vCount[sender]++;
+			xTimerChangePeriod(vTimer[sender],vSusPeriod[sender],0);
+			xTimerReset(vTimer[sender],0);
+			xTimerStart(vTimer[sender],0);
+			vTaskSuspend(vTask[sender]);
+		}
+
+		else // Finished suspended period
+		{
+			vCount[sender]--;
+			for(i=0;i<(sizeof(vCount)/sizeof(uint8_t));i++)
+			{
+				if((xTimerIsTimerActive(vTimer[i])==pdTRUE)
+						&&(vCount[i]==0)
+						&&(uxTaskPriorityGet(vTask[sender])>uxTaskPriorityGet(vTask[i])) )
+				{
+					xTimerStop(vTimer[i],0);
+
+
+					xTimerChangePeriod(vTimer[sender],vActivePeriod[sender],0);
+					xTimerReset(vTimer[sender],0);
+					xTimerStart(vTimer[sender],0);
+
+					vTaskResume(vTask[sender]);
+				}
+			}
+		}
+	}
+}
+
+void Test_Task(void const * argument)
+{
+	for(;;)
+	{
+
+		uint32_t size = sizeof(photo_vect);
+
+		uint32_t settime = 1680786088; //1680786169 // Year 2023; Month 4; Day 6; Hour 15; Minutes 1; Seconds 28
+		Send_to_WFQueue(&settime, 4, SET_TIME_ADDR, OBCsender);
+		PAYLOAD_RTC_SetTime(&hrtc);
+		PAYLOAD_RTC_GetTime(&hrtc);
 	}
 }
 
@@ -1213,7 +1426,6 @@ void Start_timer_16(void){
 	//manualDelayMS(1);
 }
 /* USER CODE END 4 */
-
 /**
   * @brief  This function is executed in case of error occurrence.
   * @retval None

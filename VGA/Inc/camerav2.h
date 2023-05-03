@@ -42,4 +42,6 @@ uint16_t storeDataFlash();
 
 bool getVersion(UART_HandleTypeDef huart);
 
+void PAYLOAD_PhotoTimer();
+
 #endif /* INC_CAMERAV2_H_ */

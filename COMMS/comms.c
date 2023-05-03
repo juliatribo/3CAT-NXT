@@ -209,40 +209,15 @@ void COMMS_StateMachine( void )
 
     configuration();               //Configures the transceiver
 
+    EventBits_t EventBits;
 
-    xEventGroupSetBits(xEventGroup, COMMS_DONE_EVENT);
-
-
-
-    //uint32_t RX_COMMS_NOTIS; // variable storing the notification value of COMMS
-
-    for(;;)                     //The only option to end the state machine is killing COMMS thread (by the OBC)
+    for(;;)
     {
+    	//xTimerStart(xTimerComms,0);
 
-    	//xEventGroupSync(xEventGroup, COMMS_DONE_EVENT, COMMS_START_EVENT, portMAX_DELAY);
-    	/*
-        if (xTaskNotifyWait(0, 0xFFFFFFFF, &RX_COMMS_NOTIS, 0)==pdPASS)
-        {
-        	if((RX_COMMS_NOTIS & WAKEUP_NOTI)==WAKEUP_NOTI)
-        	{
-        		// SEND WAKEUP NOTI TO GS
-        	}
+    	//COMMS_RX_OBCFlags(); // Function that checks the notifications sent by OBC to COMMS.
+    	Radio.IrqProcess();  // Function that checks the IRQ flags of the SX1262.
 
-        	if((RX_COMMS_NOTIS & SUNSAFE_NOTI)==SUNSAFE_NOTI)
-        	{
-        		// SEND SUNSAFE NOTI TO GS
-        	}
-
-        	if((RX_COMMS_NOTIS & CONTINGENCY_NOTI)==CONTINGENCY_NOTI)
-        	{
-        		// SEND CONTINGENCY NOTI TO GS
-        	}
-        }
-        */
-
-    	//DelayMs(1);
-
-    	Radio.IrqProcess();       //Checks the interruptions
         switch(State)
         {
             case RX_TIMEOUT:
@@ -276,6 +251,7 @@ void COMMS_StateMachine( void )
 
 					int index = ceil(BufferSize/RATE_CON);
 					uint8_t conv_decoded[index];
+
 
 					ssize_t decoded_conv_size = correct_convolutional_decode(conv, Buffer, BufferSize*8, conv_decoded);
 
@@ -377,7 +353,8 @@ void COMMS_StateMachine( void )
 					    State = TX;
 					    error_telecommand = true;
 					    Stop_timer_16();
-					    //xEventGroupSetBits(xEventGroup, uxBitsToSet)
+
+					    xEventGroupSetBits(xEventGroup, COMMS_WRONGPACKET_EVENT);
 					    //vTaskDelay(500);
 					    //manualDelayMS(500);
 					}
@@ -558,6 +535,7 @@ void COMMS_StateMachine( void )
                 break;
         }
 
+        //xTimerStop(xTimerComms,0);
         //TimerLowPowerHandler( );
     }
 }
@@ -648,6 +626,7 @@ void OnRxDone( uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr )
     RssiMoy = (((RssiMoy*RxCorrectCnt)+RssiValue)/(RxCorrectCnt+1));
     SnrMoy = (((SnrMoy*RxCorrectCnt)+SnrValue)/(RxCorrectCnt+1));
     State = RX;
+    //xEventGroupSetBits(xEventGroup, COMMS_RXIRQFlag_EVENT);
     //testRX = 1;
 }
 
@@ -833,240 +812,241 @@ bool pin_correct(uint8_t pin_1, uint8_t pin_2) {
 void process_telecommand(uint8_t header, uint8_t info) {
 	uint8_t info_write;	//Write_Flash functions requires uint64_t variables (64 bits) or arrays
 	switch(header) {
-	case RESET2:{
-		HAL_NVIC_SystemReset();
-		break;
-	}
-	case NOMINAL:{
-		info_write = 91;
-		Send_to_WFQueue(&info_write,sizeof(info_write),NOMINAL_ADDR,COMMSsender);
-		xTaskNotify(OBC_Handle, NOMINAL_NOTI, eSetBits); //Notification to OBC
-		break;
-	}
-	case LOW:{
-		info_write = 87;
-		Send_to_WFQueue(&info_write,sizeof(info_write),LOW_ADDR,COMMSsender);
-		xTaskNotify(OBC_Handle, LOW_NOTI, eSetBits); //Notification to OBC
-		break;
-	}
-	case CRITICAL:{
-		info_write = 81;
-		Send_to_WFQueue(&info_write,sizeof(info_write),CRITICAL_ADDR,COMMSsender);
-		xTaskNotify(OBC_Handle, CRITICAL_NOTI, eSetBits); //Notification to OBC
-		break;
-	}
-	/*
-	case EXIT_LOW_POWER:{
-		xTaskNotify(OBC_TaskHandle, EXIT_LOW_POWER_NOTI, eSetBits); //Notification to OBC
-		break;
-	}
-	*/
-	case EXIT_CONTINGENCY:{
-		xTaskNotify(OBC_Handle, EXIT_CONTINGENCY_NOTI, eSetBits); //Notification to OBC
-		break;
-	}
-	case EXIT_SUNSAFE:{
-		xTaskNotify(OBC_Handle, EXIT_SUNSAFE_NOTI, eSetBits); //Notification to OBC
-		break;
-	}
-	case SET_TIME:{
-		uint8_t time[4];
-		for (count=0; count<4; count++){
-			time[count]=decoded[count+3];
+		case RESET2:{
+			HAL_NVIC_SystemReset();
+			break;
 		}
-		Send_to_WFQueue(&time,sizeof(time),TIME_ADDR,COMMSsender);
-		xTaskNotify(OBC_Handle, SET_TIME_NOTI, eSetBits); //Notification to OBC
-		break;
-	}
-	case SET_CONSTANT_KP:{
-		info_write = 5;
-		Send_to_WFQueue(&info_write,sizeof(info_write),KP_ADDR,COMMSsender);
-		xTaskNotify(OBC_Handle, CTEKP_NOTI, eSetBits); //Notification to OBC
-		break;
-	}
-	case TLE:{
-		uint8_t tle[TLE_PACKET_SIZE];
-		for (count=0; count<TLE_PACKET_SIZE; count++){
-			tle[count]=decoded[count+3];
+		case NOMINAL:{
+			info_write = 91;
+			Send_to_WFQueue(&info_write,sizeof(info_write),NOMINAL_ADDR,COMMSsender);
+			//xTaskNotify(OBC_Handle, NOMINAL_NOTI, eSetBits); //Notification to OBC
+			break;
 		}
-		if (tle_telecommand){
-			Send_to_WFQueue(&tle,sizeof(tle),TLE_ADDR1,COMMSsender);
-			//tle_packets++;
-		} else{
-			Send_to_WFQueue(&tle,sizeof(tle),TLE_ADDR2,COMMSsender);
-			//tle_packets = 0;
+		case LOW:{
+			info_write = 87;
+			Send_to_WFQueue(&info_write,sizeof(info_write),LOW_ADDR,COMMSsender);
+			xTaskNotify(OBC_Handle, LOW_NOTI, eSetBits); //Notification to OBC
+			break;
 		}
-		xTaskNotify(OBC_Handle, TLE_NOTI, eSetBits); //Notification to OBC
-		break;
-		//For high SF 3 packets will be needed and the code should be adjusted
-	}
-	case SET_GYRO_RES:{
-		info_write = 0.35;
-		Send_to_WFQueue(&info_write,sizeof(info_write),GYRO_RES_ADDR,COMMSsender);
-		xTaskNotify(OBC_Handle, GYRORES_NOTI, eSetBits); //Notification to OBC
-		break;
-	}
-	case SEND_DATA:{
-		if (!contingency){
-			tx_flag = true;	//Activates TX flag
-			State = TX;
-			send_data = true;
+		case CRITICAL:{
+			info_write = 81;
+			Send_to_WFQueue(&info_write,sizeof(info_write),CRITICAL_ADDR,COMMSsender);
+			xTaskNotify(OBC_Handle, CRITICAL_NOTI, eSetBits); //Notification to OBC
+			break;
 		}
-		break;
-	}
-	case SEND_TELEMETRY:{
-		uint64_t read_telemetry[5];
-		uint8_t transformed[TELEMETRY_PACKET_SIZE];	//Maybe is better to use 40 bytes, as multiple of 8
-		if (!contingency){
-			Read_Flash(PHOTO_ADDR, &read_telemetry, sizeof(read_telemetry)); // change to TELEMETRY_ADDR
-			decoded[0] = MISSION_ID;	//Satellite ID
-			decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
-			decoded[2] = num_telemetry;	//Number of the packet
-			memcpy(&transformed, read_telemetry, sizeof(transformed));
-			for (uint8_t i=3; i<TELEMETRY_PACKET_SIZE; i++){
-				decoded[i] = transformed[i-3];
+		/*
+		case EXIT_LOW_POWER:{
+			xTaskNotify(OBC_TaskHandle, EXIT_LOW_POWER_NOTI, eSetBits); //Notification to OBC
+			break;
+		}
+		*/
+		case EXIT_CONTINGENCY:{
+			xTaskNotify(OBC_Handle, EXIT_CONTINGENCY_NOTI, eSetBits); //Notification to OBC
+			break;
+		}
+		case EXIT_SUNSAFE:{
+			xTaskNotify(OBC_Handle, EXIT_SUNSAFE_NOTI, eSetBits); //Notification to OBC
+			break;
+		}
+		case SET_TIME:{
+			uint8_t time[4];
+			for (count=0; count<4; count++){
+				time[count]=decoded[count+3];
 			}
-			decoded[TELEMETRY_PACKET_SIZE+2] = 0xFF;	//Final of the packet indicator
-			num_telemetry++;
-			//vTaskDelay(pdMS_TO_TICKS(300));
-
-			uint8_t conv_encoded[256];
-			int encoded_len_bytes = encode (decoded, conv_encoded, TELEMETRY_PACKET_SIZE+3);
-
-			Radio.Send(conv_encoded,encoded_len_bytes);
-			vTaskDelay(pdMS_TO_TICKS(3000));
-			Radio.Send(conv_encoded,encoded_len_bytes);
-			State = RX;
+			Send_to_WFQueue(&time,sizeof(time),SET_TIME_ADDR,COMMSsender);
+			xTaskNotify(OBC_Handle, SET_TIME_NOTI, eSetBits); //Notification to OBC
+			break;
 		}
-		break;
-	}
-	case ASK_DATA:{
-		if (!contingency){
-			State = TX;
-			ask_data = true; 	// activate ask others flag
+		case SET_CONSTANT_KP:{
+			info_write = 5;
+			Send_to_WFQueue(&info_write,sizeof(info_write),KP_ADDR,COMMSsender);
+			xTaskNotify(OBC_Handle, CTEKP_NOTI, eSetBits); //Notification to OBC
+			break;
 		}
-		break;
-	}
-	case STOP_SENDING_DATA:{
-		tx_flag = false;	//Activates TX flag
-		State = RX;
-		send_data = false;
-		break;
-	}
-	case ACK_DATA:{
-		if (!contingency && info != 0){
-			nack_flag = true;
-			memcpy(&nack, decoded[3], sizeof(nack));
-			tx_flag = true;	//Activates TX flag
-			State = TX;
-			send_data = true;
-		}
-		break;
-	}
-	case SET_SF_CR: {
-		if (info == 0) SF = 7;
-		else if (info == 1) SF = 8;
-		else if (info == 2) SF = 9;
-		else if (info == 3) SF = 10;
-		else if (info == 4) SF = 11;
-		else if (info == 5) SF = 12;
-		info_write = SF;
-
-		Send_to_WFQueue(&info_write, 1, SF_ADDR, COMMSsender);
-		/*4 cases (4/5, 4/6, 4/7,1/2), so we will receive and store 0, 1, 2 or 3*/
-		info_write = decoded[4];
-		Send_to_WFQueue(&info_write, 1, CRC_ADDR, COMMSsender);
-		//DelayMs(10);
-		configuration();
-		break;
-	}
-	case SEND_CALIBRATION:{
-		/* CALIBRATION PACKET RECEIVED */
-		uint8_t calibration_packet[CALIBRATION_PACKET_SIZE];
-		for (count=0; count<CALIBRATION_PACKET_SIZE; count++){
-			calibration_packet[count]=decoded[count+3];
-		}
-
-		Send_to_WFQueue(&calibration_packet, sizeof(calibration_packet), CALIBRATION_ADDR, COMMSsender);
-		xTaskNotify(OBC_Handle, CALIBRATION_NOTI, eSetBits); //Notification to OBC
-
-		break;
-		//For high SF 2 packets will be needed and the code should be adjusted
-	}
-	case CHANGE_TIMEOUT:{
-		memcpy(&time_packets, decoded[3], 2);
-		Send_to_WFQueue(&time_packets, sizeof(time_packets), COMMS_TIME_ADDR, COMMSsender);
-		break;
-	}
-	case TAKE_PHOTO:{
-
-		//Flash_Write_Data(PL_TIME_ADDR, &decoded[3], 4);
-		Send_to_WFQueue(&decoded[3], 4, PL_TIME_ADDR, COMMSsender);
-		info_write = decoded[7];
-		//Flash_Write_Data(PHOTO_RESOL_ADDR, &info_write, 1);
-		Send_to_WFQueue(&info_write, 1, PHOTO_RESOL_ADDR, COMMSsender);
-		info_write = decoded[8];
-		//Flash_Write_Data(PHOTO_COMPRESSION_ADDR, &info_write, 1);
-		Send_to_WFQueue(&info_write, 1, PHOTO_COMPRESSION_ADDR, COMMSsender);
-		xTaskNotify(OBC_Handle, TAKEPHOTO_NOTI, eSetBits); //Notification to OBC
-		break;
-	}
-	case TAKE_RF:{
-		info_write = decoded[3];
-		for (uint8_t i=1; i<8; i++){
-			info_write = info_write + decoded[i+3];
-		}
-		//Flash_Write_Data(PL_RF_TIME_ADDR, &info_write, 8);
-		Send_to_WFQueue(&info_write, 8, PL_RF_TIME_ADDR, COMMSsender);
-		info_write = decoded[11];
-		//Flash_Write_Data(F_MIN_ADDR, &info_write, 1);
-		Send_to_WFQueue(&info_write, 1, F_MIN_ADDR, COMMSsender);
-		info_write = decoded[12];
-		//Flash_Write_Data(F_MAX_ADDR, &info_write, 1);
-		Send_to_WFQueue(&info_write, 1, F_MAX_ADDR, COMMSsender);
-		info_write = decoded[13];
-		//Flash_Write_Data(DELTA_F_ADDR, &info_write, 1);
-		Send_to_WFQueue(&info_write, 1, DELTA_F_ADDR, COMMSsender);
-		info_write = decoded[14];
-		//Flash_Write_Data(INTEGRATION_TIME_ADDR, &info_write, 1);
-		Send_to_WFQueue(&info_write, 1, INTEGRATION_TIME_ADDR, COMMSsender);
-		//xTaskNotify(TAKERF_NOTI); //Notification to OBC
-		xTaskNotify(OBC_Handle, TAKERF_NOTI, eSetBits); //Notification to OBC
-		break;
-	}
-	case SEND_CONFIG:{
-		uint64_t read_config[4];
-		uint8_t transformed[CONFIG_PACKET_SIZE];	//Maybe is better to use 40 bytes, as multiple of 8
-		if (!contingency){
-			Read_Flash(PHOTO_ADDR, &read_config, sizeof(read_config)); // CHANGE TO CONFIG_ADDR
-			decoded[0] = MISSION_ID;	//Satellite ID
-			decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
-			decoded[2] = num_config;	//Number of the packet
-			memcpy(&transformed, read_config, sizeof(transformed));
-			for (uint8_t i=3; i<CONFIG_PACKET_SIZE; i++){
-				decoded[i] = transformed[i-3];
+		case TLE:{
+			uint8_t tle[TLE_PACKET_SIZE];
+			for (count=0; count<TLE_PACKET_SIZE; count++){
+				tle[count]=decoded[count+3];
 			}
-			decoded[CONFIG_PACKET_SIZE] = 0xFF;	//Final of the packet indicator
-			num_config++;
-			//DelayMs(300);
-
-
-			uint8_t conv_encoded[256];
-			int encoded_len_bytes = encode (decoded, conv_encoded, CONFIG_PACKET_SIZE+1);
-
-			//DelayMs( 300 );
-			Radio.Send(conv_encoded,encoded_len_bytes);
-			vTaskDelay(pdMS_TO_TICKS(3000));
-			Radio.Send(conv_encoded,encoded_len_bytes);
-			State = RX;
+			if (tle_telecommand){
+				Send_to_WFQueue(&tle,sizeof(tle),TLE_ADDR1,COMMSsender);
+				//tle_packets++;
+			} else{
+				Send_to_WFQueue(&tle,sizeof(tle),TLE_ADDR2,COMMSsender);
+				//tle_packets = 0;
+			}
+			xTaskNotify(OBC_Handle, TLE_NOTI, eSetBits); //Notification to OBC
+			break;
+			//For high SF 3 packets will be needed and the code should be adjusted
 		}
-		break;
+		case SET_GYRO_RES:{
+			info_write = 0.35;
+			Send_to_WFQueue(&info_write,sizeof(info_write),GYRO_RES_ADDR,COMMSsender);
+			xTaskNotify(OBC_Handle, GYRORES_NOTI, eSetBits); //Notification to OBC
+			break;
+		}
+		case SEND_DATA:{
+			if (!contingency){
+				tx_flag = true;	//Activates TX flag
+				State = TX;
+				send_data = true;
+			}
+			break;
+		}
+		case SEND_TELEMETRY:{
+			uint64_t read_telemetry[5];
+			uint8_t transformed[TELEMETRY_PACKET_SIZE];	//Maybe is better to use 40 bytes, as multiple of 8
+			if (!contingency){
+				Read_Flash(PHOTO_ADDR, &read_telemetry, sizeof(read_telemetry)); // change to TELEMETRY_ADDR
+				decoded[0] = MISSION_ID;	//Satellite ID
+				decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
+				decoded[2] = num_telemetry;	//Number of the packet
+				memcpy(&transformed, read_telemetry, sizeof(transformed));
+				for (uint8_t i=3; i<TELEMETRY_PACKET_SIZE; i++){
+					decoded[i] = transformed[i-3];
+				}
+				decoded[TELEMETRY_PACKET_SIZE+2] = 0xFF;	//Final of the packet indicator
+				num_telemetry++;
+
+				uint8_t conv_encoded[256];
+				int encoded_len_bytes = encode (decoded, conv_encoded, TELEMETRY_PACKET_SIZE+3);
+
+				Radio.Send(conv_encoded,encoded_len_bytes);
+				vTaskDelay(pdMS_TO_TICKS(3000));
+				Radio.Send(conv_encoded,encoded_len_bytes);
+				State = RX;
+			}
+			break;
+		}
+		case ASK_DATA:{
+			if (!contingency){
+				State = TX;
+				ask_data = true; 	// activate ask others flag
+			}
+			break;
+		}
+		case STOP_SENDING_DATA:{
+			tx_flag = false;	//Activates TX flag
+			State = RX;
+			send_data = false;
+			break;
+		}
+		case ACK_DATA:{
+			if (!contingency && info != 0){
+				nack_flag = true;
+				memcpy(&nack, decoded[3], sizeof(nack));
+				tx_flag = true;	//Activates TX flag
+				State = TX;
+				send_data = true;
+			}
+			break;
+		}
+		case SET_SF_CR: {
+			if (info == 0) SF = 7;
+			else if (info == 1) SF = 8;
+			else if (info == 2) SF = 9;
+			else if (info == 3) SF = 10;
+			else if (info == 4) SF = 11;
+			else if (info == 5) SF = 12;
+			info_write = SF;
+
+			Send_to_WFQueue(&info_write, 1, SF_ADDR, COMMSsender);
+			/*4 cases (4/5, 4/6, 4/7,1/2), so we will receive and store 0, 1, 2 or 3*/
+			info_write = decoded[4];
+			Send_to_WFQueue(&info_write, 1, CRC_ADDR, COMMSsender);
+			//DelayMs(10);
+			configuration();
+			break;
+		}
+		case SEND_CALIBRATION:{
+			/* CALIBRATION PACKET RECEIVED */
+			uint8_t calibration_packet[CALIBRATION_PACKET_SIZE];
+			for (count=0; count<CALIBRATION_PACKET_SIZE; count++){
+				calibration_packet[count]=decoded[count+3];
+			}
+
+			Send_to_WFQueue(&calibration_packet, sizeof(calibration_packet), CALIBRATION_ADDR, COMMSsender);
+			xTaskNotify(OBC_Handle, CALIBRATION_NOTI, eSetBits); //Notification to OBC
+
+			break;
+			//For high SF 2 packets will be needed and the code should be adjusted
+		}
+		case CHANGE_TIMEOUT:{
+			memcpy(&time_packets, decoded[3], 2);
+			Send_to_WFQueue(&time_packets, sizeof(time_packets), COMMS_TIME_ADDR, COMMSsender);
+			break;
+		}
+		case TAKE_PHOTO:{
+
+			//Flash_Write_Data(PL_TIME_ADDR, &decoded[3], 4);
+			Send_to_WFQueue(&decoded[3], 4, PL_TIME_ADDR, COMMSsender);
+			info_write = decoded[7];
+			//Flash_Write_Data(PHOTO_RESOL_ADDR, &info_write, 1);
+			Send_to_WFQueue(&info_write, 1, PHOTO_RESOL_ADDR, COMMSsender);
+			info_write = decoded[8];
+			//Flash_Write_Data(PHOTO_COMPRESSION_ADDR, &info_write, 1);
+			Send_to_WFQueue(&info_write, 1, PHOTO_COMPRESSION_ADDR, COMMSsender);
+			xTaskNotify(OBC_Handle, TAKEPHOTO_NOTI, eSetBits); //Notification to OBC
+			break;
+		}
+		case TAKE_RF:{
+			info_write = decoded[3];
+			for (uint8_t i=1; i<8; i++){
+				info_write = info_write + decoded[i+3];
+			}
+
+			Send_to_WFQueue(&info_write, 8, PL_RF_TIME_ADDR, COMMSsender);
+			info_write = decoded[11];
+			Send_to_WFQueue(&info_write, 1, F_MIN_ADDR, COMMSsender);
+			info_write = decoded[12];
+			Send_to_WFQueue(&info_write, 1, F_MAX_ADDR, COMMSsender);
+			info_write = decoded[13];
+			Send_to_WFQueue(&info_write, 1, DELTA_F_ADDR, COMMSsender);
+			info_write = decoded[14];
+			Send_to_WFQueue(&info_write, 1, INTEGRATION_TIME_ADDR, COMMSsender);
+
+			//xTaskNotify(OBC_Handle, TAKERF_NOTI, eSetBits); //Notification to OBC
+			break;
+		}
+		case SEND_CONFIG:{
+			uint64_t read_config[4];
+			uint8_t transformed[CONFIG_PACKET_SIZE];	//Maybe is better to use 40 bytes, as multiple of 8
+			if (!contingency){
+				Read_Flash(PHOTO_ADDR, &read_config, sizeof(read_config)); // CHANGE TO CONFIG_ADDR
+				decoded[0] = MISSION_ID;	//Satellite ID
+				decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
+				decoded[2] = num_config;	//Number of the packet
+				memcpy(&transformed, read_config, sizeof(transformed));
+				for (uint8_t i=3; i<CONFIG_PACKET_SIZE; i++){
+					decoded[i] = transformed[i-3];
+				}
+				decoded[CONFIG_PACKET_SIZE] = 0xFF;	//Final of the packet indicator
+				num_config++;
+				//DelayMs(300);
+
+
+				uint8_t conv_encoded[256];
+				int encoded_len_bytes = encode (decoded, conv_encoded, CONFIG_PACKET_SIZE+1);
+
+				//DelayMs( 300 );
+				Radio.Send(conv_encoded,encoded_len_bytes);
+				vTaskDelay(pdMS_TO_TICKS(3000));
+				Radio.Send(conv_encoded,encoded_len_bytes);
+				State = RX;
+			}
+			break;
+		}
+		default:{
+			State = TX;
+			error_telecommand = true;
+			break;
+		}
 	}
-	default:{
-		State = TX;
-		error_telecommand = true;
-		break;
-	}
+
+	if(!error_telecommand)
+	{
+		//xEventGroupSetBits(xEventGroup, COMMS_TELECOMMAND_EVENT); // Notify OBC task that the telecommand has already been processed (it unblocks OBC task)
+		                                                          // If the SEND_XXXX telecommands end up not sending the telemetry in this function (doing it on TX State), this line would have to change.
 	}
 }
 
@@ -1204,4 +1184,28 @@ int encode (uint8_t* buffer, uint8_t* conv_encoded, int packet_size)
 
 }
 
+void COMMS_RX_OBCFlags()
+{
+	uint32_t RX_COMMS_NOTIS;
+
+	if (xTaskNotifyWait(0, 0xFFFFFFFF, &RX_COMMS_NOTIS, 0)==pdPASS)
+	{
+		if((RX_COMMS_NOTIS & WAKEUP_NOTI)==WAKEUP_NOTI)
+		{
+			// SEND WAKEUP NOTI TO GS
+		}
+
+		if((RX_COMMS_NOTIS & SUNSAFE_NOTI)==SUNSAFE_NOTI)
+		{
+			// SEND SUNSAFE NOTI TO GS
+		}
+
+		if((RX_COMMS_NOTIS & CONTINGENCY_NOTI)==CONTINGENCY_NOTI)
+		{
+			// SEND CONTINGENCY NOTI TO GS
+		}
+
+		xEventGroupSetBits(xEventGroup, COMMS_RXNOTI_EVENT);
+	}
+}
 
