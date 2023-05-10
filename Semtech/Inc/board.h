@@ -61,6 +61,7 @@ Maintainer: Miguel Luis and Gregory Cristian
 
 #define RADIO_BUSY                                  PA_8//PB_3
 #define RADIO_DIO_1                                 PA_10//PB_4
+#define RADIO_DIO_2									NC //DIO2 IS NOT CONNECTED
 
 #define ANT_SWITCH_POWER                            PC_8//PA_9	//Check this lines
 

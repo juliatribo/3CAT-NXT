@@ -40,12 +40,10 @@
 #define ACK_DATA  				23	/*It is received when all the data is received correctly*/
 #define SET_SF_CR				24
 
+//NACK
+#define NACK_TELEMETRY			51
+#define NACK_CONFIG				52
 
-#define ASK_DATA 				60	//This command is sent from GS asking the satellite to ask other satellites for data
-#define ASK_TELEMETRY			61	//This command is sent from GS asking the satellite to ask other satellites for telemetry
-#define ASK_STOP_SENDING_DATA  	62	//This command is sent from GS asking the satellite to ask the other satellite to stop sending data
-#define ASK_ACK_DATA  			63	//This command is sent from GS asking the satellite to inform the other satellite everything is received correctly
-#define ASK_SET_SF_CR			64	//This command is sent from GS asking the satellite to ask other satellites to set sf cr
 
 //#define SET_CRC				25
 #define SEND_CALIBRATION		25
