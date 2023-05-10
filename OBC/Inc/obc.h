@@ -8,13 +8,11 @@
 #ifndef INC_OBC_H_
 #define INC_OBC_H_
 
-#include <softTim.h>
 #include "main.h"
 #include <stdbool.h>
 #include "clock.h"
 #include "periph.h"
 
-#include "obc_task.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -37,6 +35,7 @@
 #include "board.h"
 #include "gpio-board.h"
 
+#include "software_timers.h"
 
 
 /****PERIPHERAL VARIABLES****/
@@ -67,7 +66,7 @@ void OBC_Contingency();
 void OBC_Sunsafe();
 void OBC_Survival();
 
-void OBC_COMMSFlags();
+void OBC_Flags();
 
 
 #endif /* INC_OBC_H_ */

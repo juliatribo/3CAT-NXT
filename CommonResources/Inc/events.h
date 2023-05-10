@@ -8,21 +8,15 @@
 #ifndef INC_EVENTS_H_
 #define INC_EVENTS_H_
 
-/******COMMS EVENTS******/
-#define COMMS_RXIRQFlag_EVENT 				1<<0   // IRQ flag pending on the transceiver
-#define COMMS_RXNOTI_EVENT                  1<<1   // Task notifications pending on COMMS
 
-#define COMMS_TELECOMMAND_EVENT				1<<2   // Telecommand has been processed succesfully
-#define COMMS_WRONGPACKET_EVENT				1<<3   // The packet received is not ours
+#define COMMS_START_EVENT						1<<0
+#define PAYLOAD_START_EVENT   					1<<1
+#define ADCS_START_EVENT						1<<2
+#define FLASH_START_EVENT		    			1<<3
 
-/******ADCS EVENTS******/
-#define ADCS_DONE_EVENT               		1<<4   // Dangerous temperature gradient on lateral boards
-
-/******EPS EVENTS******/
-#define EPS_DONE_EVENT						1<<5
-
-/******PAYLOAD EVENTS******/
-#define PAYLOAD_POINTINGDONE_EVENT          1<<8
-#define PAYLOAD_TIMEFORPHOTO_EVENT          1<<9
+#define COMMS_DONE_EVENT						1<<4
+#define PAYLOAD_DONE_EVENT   					1<<5
+#define ADCS_DONE_EVENT							1<<6
+#define FLASH_DONE_EVENT		    			1<<7
 
 #endif /* INC_EVENTS_H_ */

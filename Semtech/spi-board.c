@@ -17,6 +17,7 @@ Maintainer: Miguel Luis and Gregory Cristian
 #include "spi-board.h"
 #include "stm32l4xx_hal_spi.h"
 
+
 #define SPI_SIZE_8BIT   0
 
 /*!

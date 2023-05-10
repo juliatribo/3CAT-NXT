@@ -36,7 +36,7 @@ static uint32_t Get_Bank(uint32_t Addr)
   return FLASH_BANK_1;
 }
 
-void Write_Flash(uint32_t data_addr, uint8_t *data,uint16_t n_bytes){
+void Write_Flash(uint32_t data_addr, uint8_t *data,uint16_t n_bytes) {
 	static FLASH_EraseInitTypeDef EraseInitStruct;
 	uint32_t PAGEError;
 
@@ -112,6 +112,8 @@ void Write_Flash(uint32_t data_addr, uint8_t *data,uint16_t n_bytes){
 
 void Read_Flash(uint32_t data_addr, uint8_t *RxBuf,
 		uint16_t n_bytes) {
+
+	//xSemaphoreTake(xMutex,portMAX_DELAY);
 	while (1) {
 		*RxBuf = *(__IO uint8_t*) data_addr;
 		data_addr += 1;
@@ -120,11 +122,14 @@ void Read_Flash(uint32_t data_addr, uint8_t *RxBuf,
 		if (n_bytes == 0)
 			break;
 	}
+	//xSemaphoreGive(xMutex);
 }
 
 void Send_to_WFQueue(uint8_t* pointer,uint32_t arrayLength,uint32_t addr,DataSource_t DataSource)
 {
 	QueueData_t TxQueueData = {pointer,arrayLength,addr,DataSource};
 	BaseType_t xQueueStatus = xQueueSendToBack(FLASH_Queue,&TxQueueData,portMAX_DELAY);
+
+	//xEventGroupWaitBits(xEventGroup, FLASH_DONE_EVENT, FLASH_DONE_EVENT, true, portMAX_DELAY);
 }
 

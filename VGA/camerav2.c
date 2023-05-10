@@ -394,8 +394,3 @@ bool errP(UART_HandleTypeDef huart){
 	anErrorHappened = false;
 	return false;
 }
-
-void PAYLOAD_PhotoTimer()
-{
-
-}

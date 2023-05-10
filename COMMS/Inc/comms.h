@@ -36,7 +36,6 @@
 
 extern TaskHandle_t OBC_Handle;
 extern EventGroupHandle_t xEventGroup;
-extern TimerHandle_t xTimerComms;
 
 #define RF_FREQUENCY                       	868000000 // Hz
 
@@ -201,8 +200,6 @@ int interleave(unsigned char *codeword, int size,unsigned char* codeword_interle
 int deinterleave(unsigned char *codeword_interleaved , int size,unsigned char* codeword_deinterleaved );
 
 int encode (uint8_t* Buffer, uint8_t* conv_encoded, int packet_size);
-
-void COMMS_RX_OBCFlags();
 
 #endif /* INC_COMMS_H_ */
 

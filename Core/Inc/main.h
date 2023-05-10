@@ -1,4 +1,3 @@
-
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -40,8 +39,7 @@ extern "C" {
 #include "event_groups.h"
 
 #include "obc.h"
-#include <task_definitions.h>
-#include "softTim_definitions.h"
+#include "obc_definitions.h"
 #include "comms.h"
 
 #include "flash.h"
@@ -52,10 +50,8 @@ extern "C" {
 
 #include "sx126x.h"
 
-#include "notifications.h"
-#include "softTim_notis.h"
 
-#include "payload_rtc.h"
+
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
