@@ -38,8 +38,9 @@ extern "C" {
 #include "semphr.h"
 #include "event_groups.h"
 
+#include "softTim_definitions.h"
 #include "obc.h"
-#include "obc_definitions.h"
+#include "task_definitions.h"
 #include "comms.h"
 
 #include "flash.h"

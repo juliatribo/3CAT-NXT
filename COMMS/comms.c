@@ -210,38 +210,12 @@ void COMMS_StateMachine( void )
 
     configuration();               //Configures the transceiver
 
-
-    xEventGroupSetBits(xEventGroup, COMMS_DONE_EVENT);
-
-
-
-    //uint32_t RX_COMMS_NOTIS; // variable storing the notification value of COMMS
+    //EventBits_t EventBits;
 
     for(;;)                     //The only option to end the state machine is killing COMMS thread (by the OBC)
     {
-
-    	//xEventGroupSync(xEventGroup, COMMS_DONE_EVENT, COMMS_START_EVENT, portMAX_DELAY);
-    	/*
-        if (xTaskNotifyWait(0, 0xFFFFFFFF, &RX_COMMS_NOTIS, 0)==pdPASS)
-        {
-        	if((RX_COMMS_NOTIS & WAKEUP_NOTI)==WAKEUP_NOTI)
-        	{
-        		// SEND WAKEUP NOTI TO GS
-        	}
-
-        	if((RX_COMMS_NOTIS & SUNSAFE_NOTI)==SUNSAFE_NOTI)
-        	{
-        		// SEND SUNSAFE NOTI TO GS
-        	}
-
-        	if((RX_COMMS_NOTIS & CONTINGENCY_NOTI)==CONTINGENCY_NOTI)
-        	{
-        		// SEND CONTINGENCY NOTI TO GS
-        	}
-        }
-        */
-
-    	//DelayMs(1);
+    	//xTimerStart(xTimerComms,0);
+    	//COMMS_RX_OBCFlags(); // Function that checks the notifications sent by OBC to COMMS.
 
     	Radio.IrqProcess();       //Checks the interruptions
 
@@ -382,6 +356,7 @@ void COMMS_StateMachine( void )
 							//xEventGroupSetBits(xEventGroup, uxBitsToSet)
 							//vTaskDelay(500);
 							//manualDelayMS(500);
+							// xEventGroupSetBits(xEventGroup, COMMS_WRONGPACKET_EVENT);
 						}
  						PacketReceived = false;     // Reset flag
                 	}
@@ -567,6 +542,7 @@ void COMMS_StateMachine( void )
                 break;
         }
 
+        //xTimerStop(xTimerComms,0);
         //TimerLowPowerHandler( );
     }
 }
@@ -658,6 +634,8 @@ void OnRxDone( uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr )
     SnrMoy = (((SnrMoy*RxCorrectCnt)+SnrValue)/(RxCorrectCnt+1));
     State = RX;
     //testRX = 1;
+
+    // xEventGroupSetBits(xEventGroup, COMMS_RXIRQFlag_EVENT);
 }
 
 /*************************************************************************
@@ -883,7 +861,7 @@ void process_telecommand(uint8_t header, uint8_t info) {
 		for (count=0; count<4; count++){
 			time[count]=decoded[count+3];
 		}
-		Send_to_WFQueue(&time,sizeof(time),TIME_ADDR,COMMSsender);
+		Send_to_WFQueue(&time,sizeof(time),SET_TIME_ADDR,COMMSsender);
 		xTaskNotify(OBC_Handle, SET_TIME_NOTI, eSetBits); //Notification to OBC
 		break;
 	}
@@ -1078,7 +1056,7 @@ void process_telecommand(uint8_t header, uint8_t info) {
 		//Flash_Write_Data(INTEGRATION_TIME_ADDR, &info_write, 1);
 		Send_to_WFQueue(&info_write, 1, INTEGRATION_TIME_ADDR, COMMSsender);
 		//xTaskNotify(TAKERF_NOTI); //Notification to OBC
-		xTaskNotify(OBC_Handle, TAKERF_NOTI, eSetBits); //Notification to OBC
+		//xTaskNotify(OBC_Handle, TAKERF_NOTI, eSetBits); //Notification to OBC
 		break;
 	}
 	case SEND_CONFIG:
@@ -1121,9 +1099,13 @@ void process_telecommand(uint8_t header, uint8_t info) {
 	default:{
 		State = TX;
 		error_telecommand = true;
-		break;
+		break;}
 	}
-	}
+
+	if(!error_telecommand)
+		{
+			// xEventGroupSetBits(xEventGroup, COMMS_TELECOMMAND_EVENT); // Notify OBC task that the telecommand has already been processed (it unblocks OBC task)	                                                          // If the SEND_XXXX telecommands end up not sending the telemetry in this function (doing it on TX State), this line would have to change.
+		}
 }
 
 int interleave(unsigned char *codeword, int size,unsigned char* codeword_interleaved){
@@ -1258,6 +1240,32 @@ int encode (uint8_t* buffer, uint8_t* conv_encoded, int packet_size)
 	conv_encoded[rloc4] = r4;
 	return len_to_encode_bytes;
 
+}
+
+
+void COMMS_RX_OBCFlags()
+{
+	uint32_t RX_COMMS_NOTIS;
+
+	if (xTaskNotifyWait(0, 0xFFFFFFFF, &RX_COMMS_NOTIS, 0)==pdPASS)
+	{
+		if((RX_COMMS_NOTIS & WAKEUP_NOTI)==WAKEUP_NOTI)
+		{
+			// SEND WAKEUP NOTI TO GS
+		}
+
+		if((RX_COMMS_NOTIS & SUNSAFE_NOTI)==SUNSAFE_NOTI)
+		{
+			// SEND SUNSAFE NOTI TO GS
+		}
+
+		if((RX_COMMS_NOTIS & CONTINGENCY_NOTI)==CONTINGENCY_NOTI)
+		{
+			// SEND CONTINGENCY NOTI TO GS
+		}
+
+		xEventGroupSetBits(xEventGroup, COMMS_RXNOTI_EVENT);
+	}
 }
 
 

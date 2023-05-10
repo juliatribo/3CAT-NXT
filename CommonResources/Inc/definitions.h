@@ -24,6 +24,7 @@
 
 #define THRESHOLD 3
 
+enum Subsystem {OBC, COMMS, ADCS, PAYLOAD, EPS};
 enum MachineState {_INIT, _NOMINAL, _CONTINGENCY, _SUNSAFE, _SURVIVAL};
 uint8_t currentState;
 uint8_t previousState;
@@ -120,7 +121,8 @@ typedef enum
 	OBCsender,
 	COMMSsender,
 	ADCSsender,
-	PAYLOADsender
+	PAYLOADsender,
+	EPSsender
 } DataSource_t;
 
 typedef struct
