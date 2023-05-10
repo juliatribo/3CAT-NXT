@@ -351,7 +351,7 @@ int main(void)
   //xTaskCreate( EPS_Task,         "EPS",     EPS_STACK_SIZE, NULL,   EPS_PRIORITY, &EPS_Handle  );
   //xTaskCreate( PAYLOAD_Task, "PAYLOAD", PAYLOAD_STACK_SIZE, NULL, PAYLOAD_PRIORITY, &PAYLOAD_Handle);
   //xTaskCreate( ADCS_Task,       "ADCS",    ADCS_STACK_SIZE, NULL,    ADCS_PRIORITY, &ADCS_Handle   );
-  xTaskCreate( OBC_Task,         "OBC",     OBC_STACK_SIZE, NULL,     1, &OBC_Handle    );
+  //xTaskCreate( OBC_Task,         "OBC",     OBC_STACK_SIZE, NULL,     1, &OBC_Handle    );
   xTaskCreate( COMMS_Task,     "COMMS",   COMMS_STACK_SIZE, NULL,   1, &COMMS_Handle  );
 
   FLASH_Queue = xQueueCreate(10,sizeof(QueueData_t)); // QUEUE : FIFO buffer for controlling the writing on the memory flash

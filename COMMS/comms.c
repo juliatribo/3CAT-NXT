@@ -926,10 +926,36 @@ void process_telecommand(uint8_t header, uint8_t info) {
 	case SEND_TELEMETRY:
 	case NACK_TELEMETRY:{
 		uint64_t read_telemetry[5];
+
+		/*
+		uint64_t temperature[4];
+		uint64_t battery[4];
+		uint64_t state[4];
+		uint64_t gyroscopes[4];
+		uint64_t magnetometer[4];
+		uint64_t photodiodes[4];*/
+
 		uint8_t transformed[TELEMETRY_PACKET_SIZE];	//Maybe is better to use 40 bytes, as multiple of 8
 		if (!contingency){
 			Read_Flash(PHOTO_ADDR, &read_telemetry, sizeof(read_telemetry)); // change to TELEMETRY_ADDR
 			Send_to_WFQueue(&read_telemetry, sizeof(read_telemetry), PHOTO_ADDR, COMMSsender);
+
+			/*
+
+			Read_Flash(TEMP_ADDR, &temperature, sizeof(temperature));
+			Send_to_WFQueue(&temperature, sizeof(temperature), TEMP_ADDR, COMMSsender);
+			Read_Flash(TEMP_ADDR, &battery, sizeof(battery));
+			Send_to_WFQueue(&battery, sizeof(battery), TEMP_ADDR, COMMSsender);
+			Read_Flash(TEMP_ADDR, &state, sizeof(state));
+			Send_to_WFQueue(&state, sizeof(state), TEMP_ADDR, COMMSsender);
+			Read_Flash(TEMP_ADDR, &gyroscopes, sizeof(gyroscopes));
+			Send_to_WFQueue(&gyroscopes, sizeof(gyroscopes), TEMP_ADDR, COMMSsender);
+			Read_Flash(TEMP_ADDR, &magnetometer, sizeof(magnetometer));
+			Send_to_WFQueue(&magnetometer, sizeof(magnetometer), TEMP_ADDR, COMMSsender);
+			Read_Flash(TEMP_ADDR, &photodiodes, sizeof(photodiodes));
+			Send_to_WFQueue(&photodiodes, sizeof(photodiodes), TEMP_ADDR, COMMSsender);
+			*/
+
 			decoded[0] = MISSION_ID;	//Satellite ID
 			decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
 			decoded[2] = num_telemetry;	//Number of the packet
@@ -938,7 +964,10 @@ void process_telecommand(uint8_t header, uint8_t info) {
 				decoded[i] = transformed[i-3];
 			}
 			decoded[TELEMETRY_PACKET_SIZE+2] = 0xFF;	//Final of the packet indicator
-			num_telemetry++;
+			num_telemetry++;//change to unix time
+			if(num_telemetry>255){
+				num_telemetry = 0;
+			}
 
 			uint8_t conv_encoded[256];
 			int encoded_len_bytes = encode (decoded, conv_encoded, TELEMETRY_PACKET_SIZE+3);
@@ -1055,10 +1084,14 @@ void process_telecommand(uint8_t header, uint8_t info) {
 	case SEND_CONFIG:
 	case NACK_CONFIG:{
 		uint64_t read_config[4];
+
 		uint8_t transformed[CONFIG_PACKET_SIZE];	//Maybe is better to use 40 bytes, as multiple of 8
 		if (!contingency){
-			Read_Flash(PHOTO_ADDR, &read_config, sizeof(read_config)); // CHANGE TO CONFIG_ADDR
+
+			Read_Flash(PHOTO_ADDR, &read_config, sizeof(read_config)); // change to TELEMETRY_ADDR
 			Send_to_WFQueue(&read_config, sizeof(read_config), PHOTO_ADDR, COMMSsender);
+
+
 			decoded[0] = MISSION_ID;	//Satellite ID
 			decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
 			decoded[2] = num_config;	//Number of the packet
@@ -1068,6 +1101,9 @@ void process_telecommand(uint8_t header, uint8_t info) {
 			}
 			decoded[CONFIG_PACKET_SIZE] = 0xFF;	//Final of the packet indicator
 			num_config++;
+			if(num_config>255){
+				num_config = 0;
+			}
 			//DelayMs(300);
 
 
