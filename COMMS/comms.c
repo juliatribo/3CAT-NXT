@@ -900,7 +900,7 @@ void process_telecommand(uint8_t header, uint8_t info) {
 			xTaskNotify(OBC_Handle, EXIT_SUNSAFE_NOTI, eSetBits); //Notification to OBC
 		}
 		else if(decoded[4]==0xF0){
-			xTaskNotify(OBC_Handle, EXIT_SURVIVAL_NOTI, eSetBits); //Notification to OBC
+			//xTaskNotify(OBC_Handle, EXIT_SURVIVAL_NOTI, eSetBits); //Notification to OBC
 		}
 		break;
 	}
@@ -1057,7 +1057,7 @@ void process_telecommand(uint8_t header, uint8_t info) {
 	}
 	//For high SF 2 packets will be needed and the code should be adjusted
 	case CHANGE_TIMEOUT:{
-		Send_to_WFQueue(&decoded[3], 2, TIMEOUT_ADDR, COMMSsender);
+		//Send_to_WFQueue(&decoded[3], 2, COMMS_TIME_ADDR, COMMSsender);
 
 		break;
 	}

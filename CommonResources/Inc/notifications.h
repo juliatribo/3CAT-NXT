@@ -20,7 +20,6 @@
 #define NOMINAL_NOTI 			1<<5
 #define LOW_NOTI				1<<6
 #define CRITICAL_NOTI 			1<<7
-#define EXIT_SURVIVAL_NOTI      1<<15
 
 // To : OBC -> ADCS
 #define CTEKP_NOTI				1<<8
