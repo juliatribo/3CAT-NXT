@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <time.h>
 
 #include <string.h>
 #include <math.h>
@@ -60,11 +61,12 @@ extern EventGroupHandle_t xEventGroup;
 #define RX_TIMEOUT_VALUE                    4000
 #define BUFFER_SIZE							100
 
-#define TLE_PACKET_SIZE						66
-#define TELEMETRY_PACKET_SIZE				34
-#define CALIBRATION_PACKET_SIZE				96
-#define CONFIG_PACKET_SIZE					30
-#define DATA_PACKET_SIZE                    96
+#define TLE_PACKET_SIZE						34
+#define TELEMETRY_PACKET_SIZE				29
+#define CALIBRATION_PACKET_SIZE				33
+#define CONFIG_PACKET_SIZE					18
+#define DATA_PACKET_SIZE                    39
+#define TIMEOUT_PACKET_SIZE                 2
 
 /*!
  *	CAD performance evaluation's parameters

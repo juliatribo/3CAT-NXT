@@ -90,7 +90,7 @@
 #define DATA_ADDR					0x08030000
 #define TLE_ADDR1 					0x08038020 // 138 bytes
 #define TLE_ADDR2 					0x08038065 // 138 bytes
-#define COMMS_TIME_ADDR				0x0803E860 // Time between packets
+#define TIMEOUT_ADDR				0x0803E860 // Time between packets
 #define PHOTOTIME_ADDR					0x08038008 	//4 bytes (GS -> RTC)
 /************************************************/
 

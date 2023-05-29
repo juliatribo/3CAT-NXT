@@ -20,6 +20,7 @@
 #include <clock.h>
 #include "comms.h"
 
+
 /************  STATES  *************/
 
 typedef enum                        //Possible States of the State Machine
@@ -61,6 +62,7 @@ uint8_t send_data = false;          //To send data packets to the GS
 uint8_t beacon_flag = false;        //To transmit the beacon
 uint8_t nack_flag = false;          //Retransmission necessary
 uint8_t tle_telecommand = false;    //True when TLE telecommand received
+uint8_t calibration_telecommand = false;    //True when calibration telecommand received
 uint8_t telecommand_rx = false;     //To indicate that a telecommand has been received
 uint8_t request_execution = false;  //To send the request execution packet
 uint8_t protocol_timeout = false;   //True when the protocol timer ends
@@ -81,7 +83,8 @@ uint8_t nack_counter = 0;               //Position of the NACK array (packets al
 uint8_t count=0;                        //Counter for loops
 uint8_t protocol_timeout_counter = 0; //Number of times that the protocol timer (500 ms) has ended
                                       //This is used to have longer timers for higher SF
-
+uint8_t tle_counter = 0;			//counts the number of tle packets received
+uint8_t calibration_counter=0;		//counts the number of tle packets received
 
 /********  LoRa PARAMETERS  ********/
 uint8_t SF = LORA_SPREADING_FACTOR; //Spreading Factor
@@ -162,6 +165,7 @@ void configuration(void){
     Radio.StartCad( );      //To initialize the CAD process
 
     conv = correct_convolutional_create(RATE_CON, ORDER_CON, correct_conv_r12_7_polynomial);
+
 
     State = RX;             //To initialize in RX state
 };
@@ -249,17 +253,19 @@ void COMMS_StateMachine( void )
             {
                 if(PacketReceived == true)
                 {
-                	if(Buffer[0]==0xE1){
+                	if(Buffer[0]==0xC8)
+                	{
 
+                		/*
 						int index = ceil(BufferSize/RATE_CON);
 						uint8_t conv_decoded[index];
-
 						ssize_t decoded_conv_size = correct_convolutional_decode(conv, Buffer, BufferSize*8, conv_decoded);
+                		 */
 
 						//DEINTERLEAVE
 						unsigned char codeword_deinterleaved[127]; //127 is the maximum value it can get taking into account the tinygs maximum length is 255 and that the convolutional code adds redundant bytes
-						index = deinterleave(conv_decoded, decoded_conv_size, codeword_deinterleaved);
-						decoded_size = index-4;
+						int index = deinterleave(Buffer, BufferSize, codeword_deinterleaved);
+						decoded_size = index-NPAR;
 						//DECODE REED SOLOMON
 
 						int erasures[16];
@@ -287,16 +293,38 @@ void COMMS_StateMachine( void )
 							if (decoded[2] == TLE){
 								Stop_timer_16();	//This is not necessary, put here for safety
 								if (!tle_telecommand){	//First TLE packet
-									tle_telecommand = true;
 									State = RX;
 									telecommand_rx = true;
+									if(tle_counter==3){
+										tle_telecommand = true;
+									}
+									tle_counter++;
 								}
 								else{	//Is the last TLE packet (there are 2)
 									tle_telecommand = false;
 									State = LOWPOWER;	//Line unnecessary
 									telecommand_rx = false;
+									tle_counter=0;
 								}
 								process_telecommand(decoded[2], decoded[3]);	//Saves the TLE
+							}
+							if (decoded[2] == ADCS_CALIBRATION){
+								Stop_timer_16();	//This is not necessary, put here for safety
+								if (!calibration_telecommand){	//First TLE packet
+									State = RX;
+									telecommand_rx = true;
+									if(calibration_counter==1){
+										calibration_telecommand = true;
+									}
+									calibration_counter++;
+								}
+								else{	//Is the last TLE packet (there are 2)
+									calibration_telecommand = false;
+									State = LOWPOWER;	//Line unnecessary
+									telecommand_rx = false;
+									calibration_counter=0;
+								}
+								process_telecommand(decoded[2], decoded[3]);	//Saves the calibration
 							}
 							else if (telecommand_rx){//Second telecommand RX consecutively
 
@@ -305,7 +333,7 @@ void COMMS_StateMachine( void )
 								if (decoded[2] == last_telecommand[2]){	//Second telecommand received equal to the first CHANGE THIS TO CHECK THE WHOLE TELECOMMAND. USE VARIABLE compare_arrays
 									//decoded[2] == (SEND_DATA || SEND_TELEMETRY || ACK_DATA || SEND_CALIBRATION || SEND_CONFIG);
 									Stop_timer_16();
-									if ((decoded[2] == RESET2) || (decoded[2] == NOMINAL) || (decoded[2] == LOW) || (decoded[2] == CRITICAL) || (decoded[2] == EXIT_LOW_POWER) || (decoded[2] == EXIT_CONTINGENCY) || (decoded[2] == EXIT_SUNSAFE) || (decoded[2] == SET_TIME) || decoded[2] == SEND_DATA || decoded[2] == SEND_TELEMETRY || decoded[2] == ACK_DATA || decoded[2] == SEND_CALIBRATION || decoded[2] == SEND_CONFIG|| decoded[2] == TAKE_RF || (decoded[2] == NACK_TELEMETRY) || (decoded[2] == NACK_CONFIG) ){
+									if ((decoded[2] == RESET2) || (decoded[2] == EXIT_STATE) || (decoded[2] == TLE) || (decoded[2] == ADCS_CALIBRATION) || (decoded[2] == SEND_DATA) || (decoded[2] == SEND_TELEMETRY) || (decoded[2] == STOP_SENDING_DATA) || (decoded[2] == CHANGE_TIMEOUT) || decoded[2] == ACK_DATA || decoded[2] == NACK_TELEMETRY || decoded[2] == NACK_CONFIG || decoded[2] == ACTIVATE_PAYLOAD || decoded[2] == SEND_CONFIG|| decoded[2] == UPLINK_CONFIG ){
 										telecommand_rx = false;
 										process_telecommand(decoded[2], decoded[3]);
 									}
@@ -411,12 +439,12 @@ void COMMS_StateMachine( void )
             	}
             	else if (tx_flag){
             		uint64_t read_photo[12];
-            		uint8_t transformed[96];
+            		uint8_t transformed[DATA_PACKET_SIZE];
             		if (window_packet < WINDOW_SIZE){
             			if (nack_flag){
             				if (nack_counter < nack_size){
-            					Read_Flash(PHOTO_ADDR + nack[nack_counter]*96, &read_photo, sizeof(read_photo));
-                    			decoded[2] = nack[nack_counter];	//Number of the retransmitted packet
+            					Read_Flash(PHOTO_ADDR + nack[nack_counter]*DATA_PACKET_SIZE, &read_photo, sizeof(read_photo));
+                    			decoded[3] = nack[nack_counter];	//Number of the retransmitted packet
                     			nack_counter++;
 
             				} else{ //When all packets have been retransmitted, we continue with the next one
@@ -430,18 +458,28 @@ void COMMS_StateMachine( void )
                     			window_packet = WINDOW_SIZE;
             				}
             			} else {
-            				Read_Flash(PHOTO_ADDR + packet_number*96, &read_photo, sizeof(read_photo));
-                			decoded[2] = packet_number;	//Number of the packet
+            				Read_Flash(PHOTO_ADDR + packet_number*DATA_PACKET_SIZE, &read_photo, sizeof(read_photo));
+                			decoded[3] = packet_number;	//Number of the packet
                 			packet_number++;
 
             			}
+
+
             			decoded[0] = MISSION_ID;	//Satellite ID
 						decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
+						decoded[2] = SEND_DATA;
 						memcpy(&transformed, read_photo, sizeof(transformed));
-						for (uint8_t i=3; i<BUFFER_SIZE-1; i++){
-							decoded[i] = transformed[i-3];
+						for (uint8_t i=4; i<DATA_PACKET_SIZE+4; i++){
+							decoded[i] = transformed[i-4];
 						}
-						decoded[BUFFER_SIZE-1] = 0xFF;	//Final of the packet indicator
+						TimerTime_t currentUnixTime = RtcGetTimerValue();
+						uint32_t unixTime32 = (uint32_t)currentUnixTime;
+						decoded[DATA_PACKET_SIZE+4] = (unixTime32 >> 24) & 0xFF;
+						decoded[DATA_PACKET_SIZE+5] = (unixTime32 >> 16) & 0xFF;
+						decoded[DATA_PACKET_SIZE+6] = (unixTime32 >> 8) & 0xFF;
+						decoded[DATA_PACKET_SIZE+7] = unixTime32 & 0xFF;
+						decoded[DATA_PACKET_SIZE+8] = 0xFF;	//Final of the packet indicator
+
 						window_packet++;
 						State = TX;
 
@@ -450,9 +488,9 @@ void COMMS_StateMachine( void )
 						//int encoded_len_bytes = encode (decoded, conv_encoded, DATA_PACKET_SIZE+1);
 						//print_word(encoded_len_bytes, conv_encoded);
 
-						Radio.Send( decoded, BUFFER_SIZE );
+						Radio.Send( decoded, DATA_PACKET_SIZE +9);
 						vTaskDelay(pdMS_TO_TICKS(3000));
-						Radio.Send( decoded, BUFFER_SIZE );
+						Radio.Send( decoded, DATA_PACKET_SIZE +9);
 
             		} else{
             			tx_flag = false;
@@ -824,6 +862,7 @@ void process_telecommand(uint8_t header, uint8_t info) {
 		HAL_NVIC_SystemReset();
 		break;
 	}
+	/*
 	case NOMINAL:{
 		info_write = 91;
 		Send_to_WFQueue(&info_write,sizeof(info_write),NOMINAL_ADDR,COMMSsender);
@@ -842,20 +881,30 @@ void process_telecommand(uint8_t header, uint8_t info) {
 		xTaskNotify(OBC_Handle, CRITICAL_NOTI, eSetBits); //Notification to OBC
 		break;
 	}
-	/*
+
 	case EXIT_LOW_POWER:{
 		xTaskNotify(OBC_TaskHandle, EXIT_LOW_POWER_NOTI, eSetBits); //Notification to OBC
 		break;
 	}
-	*/
+
 	case EXIT_CONTINGENCY:{
 		xTaskNotify(OBC_Handle, EXIT_CONTINGENCY_NOTI, eSetBits); //Notification to OBC
 		break;
 	}
-	case EXIT_SUNSAFE:{
-		xTaskNotify(OBC_Handle, EXIT_SUNSAFE_NOTI, eSetBits); //Notification to OBC
+	*/
+	case EXIT_STATE:{
+		if(decoded[3]==0xF0){
+			xTaskNotify(OBC_Handle, EXIT_CONTINGENCY_NOTI, eSetBits); //Notification to OBC
+		}
+		else if(decoded[3]==0x0F){
+			xTaskNotify(OBC_Handle, EXIT_SUNSAFE_NOTI, eSetBits); //Notification to OBC
+		}
+		else if(decoded[4]==0xF0){
+			xTaskNotify(OBC_Handle, EXIT_SURVIVAL_NOTI, eSetBits); //Notification to OBC
+		}
 		break;
 	}
+	/*
 	case SET_TIME:{
 		uint8_t time[4];
 		for (count=0; count<4; count++){
@@ -865,34 +914,38 @@ void process_telecommand(uint8_t header, uint8_t info) {
 		xTaskNotify(OBC_Handle, SET_TIME_NOTI, eSetBits); //Notification to OBC
 		break;
 	}
+
 	case SET_CONSTANT_KP:{
 		info_write = 5;
 		Send_to_WFQueue(&info_write,sizeof(info_write),KP_ADDR,COMMSsender);
 		xTaskNotify(OBC_Handle, CTEKP_NOTI, eSetBits); //Notification to OBC
 		break;
 	}
+	*/
 	case TLE:{
-		uint8_t tle[TLE_PACKET_SIZE];
-		for (count=0; count<TLE_PACKET_SIZE; count++){
-			tle[count]=decoded[count+3];
+
+		if (tle_counter==1 ||tle_counter==2 ){
+			Send_to_WFQueue(&decoded[3],TLE_PACKET_SIZE,TLE_ADDR1+(tle_counter-1)*TLE_PACKET_SIZE,COMMSsender);
 		}
-		if (tle_telecommand){
-			Send_to_WFQueue(&tle,sizeof(tle),TLE_ADDR1,COMMSsender);
-			//tle_packets++;
-		} else{
-			Send_to_WFQueue(&tle,sizeof(tle),TLE_ADDR2,COMMSsender);
-			//tle_packets = 0;
+		else if (tle_counter==3){
+			Send_to_WFQueue(&decoded[3],1,TLE_ADDR1+2*TLE_PACKET_SIZE,COMMSsender);
+			Send_to_WFQueue(&decoded[4],TLE_PACKET_SIZE-1,TLE_ADDR2,COMMSsender);
+		}
+		else if(tle_counter==4||tle_counter==5){
+			Send_to_WFQueue(&decoded[3],TLE_PACKET_SIZE,TLE_ADDR2+(tle_counter-3)*TLE_PACKET_SIZE-1,COMMSsender);
 		}
 		xTaskNotify(OBC_Handle, TLE_NOTI, eSetBits); //Notification to OBC
 		break;
 		//For high SF 3 packets will be needed and the code should be adjusted
 	}
+	/*
 	case SET_GYRO_RES:{
 		info_write = 0.35;
 		Send_to_WFQueue(&info_write,sizeof(info_write),GYRO_RES_ADDR,COMMSsender);
 		xTaskNotify(OBC_Handle, GYRORES_NOTI, eSetBits); //Notification to OBC
 		break;
 	}
+	*/
 	case SEND_DATA:{
 		if (!contingency){
 			tx_flag = true;	//Activates TX flag
@@ -936,30 +989,35 @@ void process_telecommand(uint8_t header, uint8_t info) {
 
 			decoded[0] = MISSION_ID;	//Satellite ID
 			decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
-			decoded[2] = num_telemetry;	//Number of the packet
+			decoded[2] = SEND_TELEMETRY;	//ID of the packet
 			memcpy(&transformed, read_telemetry, sizeof(transformed));
-			for (uint8_t i=3; i<TELEMETRY_PACKET_SIZE; i++){
+			for (uint8_t i=3; i<TELEMETRY_PACKET_SIZE+3; i++){
 				decoded[i] = transformed[i-3];
 			}
-			decoded[TELEMETRY_PACKET_SIZE+2] = 0xFF;	//Final of the packet indicator
-			num_telemetry++;//change to unix time
-			if(num_telemetry>255){
-				num_telemetry = 0;
-			}
+			TimerTime_t currentUnixTime = RtcGetTimerValue();
+			uint32_t unixTime32 = (uint32_t)currentUnixTime;
+			decoded[TELEMETRY_PACKET_SIZE+3] = (unixTime32 >> 24) & 0xFF;
+			decoded[TELEMETRY_PACKET_SIZE+4] = (unixTime32 >> 16) & 0xFF;
+			decoded[TELEMETRY_PACKET_SIZE+5] = (unixTime32 >> 8) & 0xFF;
+			decoded[TELEMETRY_PACKET_SIZE+6] = unixTime32 & 0xFF;
+			//print_word( TELEMETRY_PACKET_SIZE+7,decoded);
 
-			uint8_t conv_encoded[256];
-			int encoded_len_bytes = encode (decoded, conv_encoded, TELEMETRY_PACKET_SIZE+3);
+
+			uint8_t encoded[256];
+			int encoded_len_bytes = encode (decoded, encoded, TELEMETRY_PACKET_SIZE+7);
+			//print_word(encoded_len_bytes,encoded);
 			vTaskDelay(pdMS_TO_TICKS(3000));
 
-			Radio.Send(conv_encoded,encoded_len_bytes);
+
+			Radio.Send(encoded,encoded_len_bytes);
 			vTaskDelay(pdMS_TO_TICKS(3000));
-			Radio.Send(conv_encoded,encoded_len_bytes);
+			Radio.Send(encoded,encoded_len_bytes);
 			State = RX;
 		}
 		break;
 	}
 	case STOP_SENDING_DATA:{
-		tx_flag = false;	//Activates TX flag
+		tx_flag = false;	//Deactivates TX flag
 		State = RX;
 		send_data = false;
 		break;
@@ -968,7 +1026,7 @@ void process_telecommand(uint8_t header, uint8_t info) {
 		if (!contingency && info != 0){
 			nack_flag = true;
 			int j = 0;
-			for(int i = 3; i<decoded_size; i++){
+			for(int i = 3; i<decoded_size-4; i++){ //-4 to not take into account the unix time (the packet timestamp)
 				if(decoded[i]==0x0){
 					nack[j] = i-3;
 					j++;
@@ -988,54 +1046,36 @@ void process_telecommand(uint8_t header, uint8_t info) {
 		}
 		break;
 	}
-	case SET_SF_CR: {
-		if (info == 0) SF = 7;
-		else if (info == 1) SF = 8;
-		else if (info == 2) SF = 9;
-		else if (info == 3) SF = 10;
-		else if (info == 4) SF = 11;
-		else if (info == 5) SF = 12;
-		info_write = SF;
 
-		Send_to_WFQueue(&info_write, 1, SF_ADDR, COMMSsender);
-		/*4 cases (4/5, 4/6, 4/7,1/2), so we will receive and store 0, 1, 2 or 3*/
-		info_write = decoded[4];
-		Send_to_WFQueue(&info_write, 1, CRC_ADDR, COMMSsender);
-		//DelayMs(10);
-		configuration();
-		break;
-	}
-	case SEND_CALIBRATION:{
+	case ADCS_CALIBRATION:{
 		/* CALIBRATION PACKET RECEIVED */
-		uint8_t calibration_packet[CALIBRATION_PACKET_SIZE];
-		for (count=0; count<CALIBRATION_PACKET_SIZE; count++){
-			calibration_packet[count]=decoded[count+3];
-		}
-
-		Send_to_WFQueue(&calibration_packet, sizeof(calibration_packet), CALIBRATION_ADDR, COMMSsender);
+		Send_to_WFQueue(&decoded[4], CALIBRATION_PACKET_SIZE, CALIBRATION_ADDR + CALIBRATION_PACKET_SIZE*calibration_counter, COMMSsender);
 		xTaskNotify(OBC_Handle, CALIBRATION_NOTI, eSetBits); //Notification to OBC
 
 		break;
-		//For high SF 2 packets will be needed and the code should be adjusted
-	}
-	case CHANGE_TIMEOUT:{
-		memcpy(&time_packets, decoded[3], 2);
-		Send_to_WFQueue(&time_packets, sizeof(time_packets), COMMS_TIME_ADDR, COMMSsender);
-		break;
-	}
-	case TAKE_PHOTO:{
 
-		//Flash_Write_Data(PL_TIME_ADDR, &decoded[3], 4);
-		Send_to_WFQueue(&decoded[3], 4, PL_TIME_ADDR, COMMSsender);
-		info_write = decoded[7];
-		//Flash_Write_Data(PHOTO_RESOL_ADDR, &info_write, 1);
-		Send_to_WFQueue(&info_write, 1, PHOTO_RESOL_ADDR, COMMSsender);
-		info_write = decoded[8];
-		//Flash_Write_Data(PHOTO_COMPRESSION_ADDR, &info_write, 1);
-		Send_to_WFQueue(&info_write, 1, PHOTO_COMPRESSION_ADDR, COMMSsender);
-		xTaskNotify(OBC_Handle, TAKEPHOTO_NOTI, eSetBits); //Notification to OBC
+	}
+	//For high SF 2 packets will be needed and the code should be adjusted
+	case CHANGE_TIMEOUT:{
+		Send_to_WFQueue(&decoded[3], 2, TIMEOUT_ADDR, COMMSsender);
+
 		break;
 	}
+	case ACTIVATE_PAYLOAD:{
+		Send_to_WFQueue(&decoded[3], 4, PL_TIME_ADDR, COMMSsender);
+		Send_to_WFQueue(& decoded[7], 1, PHOTO_RESOL_ADDR, COMMSsender);
+		Send_to_WFQueue(&decoded[8], 1, PHOTO_COMPRESSION_ADDR, COMMSsender);
+		xTaskNotify(OBC_Handle, TAKEPHOTO_NOTI, eSetBits); //Notification to OBC
+
+		Send_to_WFQueue(&decoded[9], 8, PL_RF_TIME_ADDR, COMMSsender);
+		Send_to_WFQueue(&decoded[17], 1, F_MIN_ADDR, COMMSsender);
+		Send_to_WFQueue(& decoded[18], 1, F_MAX_ADDR, COMMSsender);
+		Send_to_WFQueue(& decoded[19], 1, DELTA_F_ADDR, COMMSsender);
+		Send_to_WFQueue(& decoded[20], 1, INTEGRATION_TIME_ADDR, COMMSsender);
+
+		break;
+	}
+	/*
 	case TAKE_RF:{
 		info_write = decoded[3];
 		for (uint8_t i=1; i<8; i++){
@@ -1056,9 +1096,10 @@ void process_telecommand(uint8_t header, uint8_t info) {
 		//Flash_Write_Data(INTEGRATION_TIME_ADDR, &info_write, 1);
 		Send_to_WFQueue(&info_write, 1, INTEGRATION_TIME_ADDR, COMMSsender);
 		//xTaskNotify(TAKERF_NOTI); //Notification to OBC
-		//xTaskNotify(OBC_Handle, TAKERF_NOTI, eSetBits); //Notification to OBC
+		xTaskNotify(OBC_Handle, TAKERF_NOTI, eSetBits); //Notification to OBC
 		break;
 	}
+	*/
 	case SEND_CONFIG:
 	case NACK_CONFIG:{
 		uint64_t read_config[4];
@@ -1072,21 +1113,22 @@ void process_telecommand(uint8_t header, uint8_t info) {
 
 			decoded[0] = MISSION_ID;	//Satellite ID
 			decoded[1] = POCKETQUBE_ID;	//Poquetcube ID (there are at least 3)
-			decoded[2] = num_config;	//Number of the packet
+			decoded[2] = SEND_CONFIG;	//ID of the packet
+			TimerTime_t currentUnixTime = RtcGetTimerValue();
+
 			memcpy(&transformed, read_config, sizeof(transformed));
-			for (uint8_t i=3; i<CONFIG_PACKET_SIZE; i++){
+			for (uint8_t i=3; i<CONFIG_PACKET_SIZE+3; i++){
 				decoded[i] = transformed[i-3];
 			}
-			decoded[CONFIG_PACKET_SIZE] = 0xFF;	//Final of the packet indicator
-			num_config++;
-			if(num_config>255){
-				num_config = 0;
-			}
-			//DelayMs(300);
+			uint32_t unixTime32 = (uint32_t)currentUnixTime;
+			decoded[CONFIG_PACKET_SIZE+3] = (unixTime32 >> 24) & 0xFF;
+			decoded[CONFIG_PACKET_SIZE+4] = (unixTime32 >> 16) & 0xFF;
+			decoded[CONFIG_PACKET_SIZE+5] = (unixTime32 >> 8) & 0xFF;
+			decoded[CONFIG_PACKET_SIZE+6] = unixTime32 & 0xFF;
 
 
 			uint8_t conv_encoded[256];
-			int encoded_len_bytes = encode (decoded, conv_encoded, CONFIG_PACKET_SIZE+1);
+			int encoded_len_bytes = encode (decoded, conv_encoded, CONFIG_PACKET_SIZE+7);
 
 			vTaskDelay(pdMS_TO_TICKS(3000));
 			Radio.Send(conv_encoded,encoded_len_bytes);
@@ -1094,6 +1136,15 @@ void process_telecommand(uint8_t header, uint8_t info) {
 			Radio.Send(conv_encoded,encoded_len_bytes);
 			State = RX;
 		}
+		break;
+	}
+	case UPLINK_CONFIG:{
+
+		Send_to_WFQueue(&decoded[3], 4, SET_TIME_ADDR, COMMSsender);
+		Send_to_WFQueue(&decoded[7], 2, SF_ADDR, COMMSsender);
+		Send_to_WFQueue(&decoded[9], 2, CRC_ADDR, COMMSsender);
+		Send_to_WFQueue(&decoded[11], 1, KP_ADDR, COMMSsender);
+		Send_to_WFQueue(&decoded[11], 1, GYRO_RES_ADDR, COMMSsender);
 		break;
 	}
 	default:{
@@ -1163,7 +1214,7 @@ int deinterleave(unsigned char *codeword_interleaved , int size,unsigned char* c
 	return size;
 }
 
-int encode (uint8_t* buffer, uint8_t* conv_encoded, int packet_size)
+int encode (uint8_t* buffer, uint8_t* encoded, int packet_size)
 {
 	 /////////////////////////////////////////////////////////////////////////
 	//            //ENCODED REED SOLOMON LIBCORRECT
@@ -1203,17 +1254,14 @@ int encode (uint8_t* buffer, uint8_t* conv_encoded, int packet_size)
 
 	int ML = packet_size + NPAR;
 	encode_data(buffer, packet_size, codeword);
-	//print_word(ML, codeword);
-
-
-
+	codeword[ML] = 0xFF;	//Final of the packet indicator
+	ML++;
 
 	//INTERLEAVE
-	unsigned char codeword_interleaved[127]; //127 is the maximum value it can get taking into account the tinygs maximum length is 255 and that the convolutional code adds redundant bytes
-	int size = interleave(codeword, ML, codeword_interleaved);
+	int size = interleave(codeword, ML, encoded);
 
 	//ENCODE CONVOLUTIONAL
-
+/*
 	uint8_t msg[size];
 	memcpy(msg, codeword_interleaved, size);
 
@@ -1229,16 +1277,20 @@ int encode (uint8_t* buffer, uint8_t* conv_encoded, int packet_size)
 	//encode message
 	size_t encoded_len_bits = correct_convolutional_encode(conv,msg,size,conv_encoded);
 	int encoded_len_bytes = ceil(encoded_len_bits/8);
+*/
+	//print_word(size, encoded);
 
 	//add random errors
 	uint8_t r3 = rand() % 256;
-	int rloc3 = rand() % (encoded_len_bytes);
-	conv_encoded[rloc3] = r3;
+	int rloc3 = rand() % (size);
+	encoded[rloc3] = r3;
 
-	uint8_t r4 = rand() % 256;
-	int rloc4 = rand() % (encoded_len_bits/8);
-	conv_encoded[rloc4] = r4;
-	return len_to_encode_bytes;
+	uint8_t  r4 = rand() % 256;
+	int rloc4 = rand() % (size);
+	encoded[rloc4] = r4;
+
+	//print_word(size, encoded);
+	return size;
 
 }
 
@@ -1268,4 +1320,11 @@ void COMMS_RX_OBCFlags()
 	}
 }
 
+void print_word(int p, unsigned char *data) {
+  int i;
+  for (i=0; i < p; i++) {
+    printf ("%02X ", data[i]);
+  }
+  printf("\n");
+}
 

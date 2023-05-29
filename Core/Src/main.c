@@ -982,9 +982,9 @@ void OBC_Task(void const * argument)
 
 void COMMS_Task(void const * argument)
 {
-	//Send_to_WFQueue(&photo_vect,sizeof(photo_vect),PHOTO_ADDR,COMMSsender);
-	//Send_to_WFQueue(&config_vect,sizeof(config_vect),CONFIG_ADDR,COMMSsender);
-	Send_to_WFQueue(&telemetry_vect,sizeof(telemetry_vect),PHOTO_ADDR,COMMSsender);
+	Send_to_WFQueue(&photo_vect,sizeof(photo_vect),PHOTO_ADDR,COMMSsender);
+	//Send_to_WFQueue(&config_vect,sizeof(config_vect),PHOTO_ADDR,COMMSsender);
+	//Send_to_WFQueue(&telemetry_vect,sizeof(telemetry_vect),PHOTO_ADDR,COMMSsender);
 
 	for(;;)
 	{
@@ -1063,7 +1063,7 @@ void PAYLOAD_Task(void const * argument)
 		if (xTaskNotifyWait(0, 0xFFFFFFFF, &RX_PAYLOAD_NOTIS, portMAX_DELAY) == pdPASS)
 			{
 
-				if((RX_PAYLOAD_NOTIS & TAKE_PHOTO)==TAKE_PHOTO)
+				if((RX_PAYLOAD_NOTIS & ACTIVATE_PAYLOAD)==ACTIVATE_PAYLOAD)
 				{
 					xTimerStart(xTimerPayload,0);
 					// Set Camara Resolution
